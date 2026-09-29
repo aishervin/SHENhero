@@ -31,7 +31,7 @@ Device-side encryption protects data at rest, but it cannot make a client API ke
 
 ## Checks and debug APKs
 
-The `Android build and persistent-key release` GitHub Actions workflow runs `testDebugUnitTest` and builds debug APKs on pushes to `main`, pull requests, and manual runs. Successful runs publish the debug APKs as a downloadable workflow artifact.
+The `Android build and persistent-key release` GitHub Actions workflow runs `testDebugUnitTest` and builds unsigned release and debug APKs on branch pushes, pull requests, and manual runs. Successful runs publish the debug APKs as a downloadable workflow artifact.
 
 ## Signed releases
 
