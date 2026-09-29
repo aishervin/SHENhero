@@ -12,6 +12,11 @@ on:
         description: "Optional release version (for example v1.0.0). Leave blank to run checks only."
         required: false
         type: string
+      signing_check:
+        description: "Sign and verify APKs without publishing a GitHub Release."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -52,7 +57,7 @@ jobs:
 
   release:
     name: Align, sign, verify, and publish APKs
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version_tag != '')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.version_tag != '' || inputs.signing_check))
     needs: verify
     runs-on: ubuntu-latest
     permissions:
@@ -79,14 +84,21 @@ jobs:
         id: version
         env:
           REQUESTED_VERSION: ${{ inputs.version_tag }}
+          SIGNING_CHECK: ${{ inputs.signing_check }}
         run: |
           set -euo pipefail
-          version="${REQUESTED_VERSION:-$GITHUB_REF_NAME}"
+          signing_check="${SIGNING_CHECK:-false}"
+          if [[ -z "$REQUESTED_VERSION" && "$signing_check" == "true" ]]; then
+            version="v0.0.0-signing-check"
+          else
+            version="${REQUESTED_VERSION:-$GITHUB_REF_NAME}"
+          fi
           if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
             echo "Use a version like v1.0.0 or v1.0.0-rc.1."
             exit 1
           fi
           echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "signing_check=$signing_check" >> "$GITHUB_OUTPUT"
 
       - name: Build unsigned release APKs
         env:
@@ -208,6 +220,7 @@ jobs:
           retention-days: 30
 
       - name: Publish GitHub release
+        if: steps.version.outputs.signing_check != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.value }}
