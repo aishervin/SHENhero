@@ -185,14 +185,14 @@ jobs:
               --ks-key-alias "$KEY_ALIAS" \
               --ks-pass env:KEYSTORE_PASSWORD \
               --key-pass env:KEY_PASSWORD \
-              --v1-signing-enabled true \
               --v2-signing-enabled true \
               --v3-signing-enabled true \
               "$aligned_apk"
 
             verification="$("$apksigner" verify --verbose --print-certs "$aligned_apk")"
             printf '%s\n' "$verification"
-            for scheme in "v1 scheme (JAR signing)" "v2 scheme (APK Signature Scheme v2)" "v3 scheme (APK Signature Scheme v3)"; do
+            # minSdk is 24, so v2 and v3 cover every supported Android release.
+            for scheme in "v2 scheme (APK Signature Scheme v2)" "v3 scheme (APK Signature Scheme v3)"; do
               if ! printf '%s\n' "$verification" | grep -Fq "Verified using $scheme: true"; then
                 echo "APK signature verification did not confirm $scheme."
                 exit 1
