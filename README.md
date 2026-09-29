@@ -35,7 +35,7 @@ The `Android build and persistent-key release` GitHub Actions workflow runs `tes
 
 ## Signed releases
 
-Create one permanent JKS keystore and keep a backup outside the repository. Never regenerate it for a later release, and never commit the keystore or its passwords. Gradle creates unsigned release APKs; the release workflow aligns each APK, signs it with the repository keystore, verifies v1/v2/v3 signatures, checks its SHA-256 certificate fingerprint against the pin in the workflow, and removes the temporary decoded keystore when signing ends.
+Create one permanent JKS keystore and keep a backup outside the repository. Never regenerate it for a later release, and never commit the keystore or its passwords. Gradle creates unsigned release APKs; the release workflow aligns each APK, signs it with the repository keystore, verifies v2/v3 signatures (the app supports Android 7.0/API 24 and newer), checks its SHA-256 certificate fingerprint against the pin in the workflow, and removes the temporary decoded keystore when signing ends.
 
 Configure these repository Actions secrets:
 
