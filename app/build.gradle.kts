@@ -5,19 +5,6 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
 }
 
-val releaseStorePath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
-val releaseStorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
-val releaseKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
-val releaseKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
-val releaseSigningValues = listOf(releaseStorePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
-val hasReleaseSigning = releaseSigningValues.all { !it.isNullOrBlank() }
-if (releaseSigningValues.any { !it.isNullOrBlank() } && !hasReleaseSigning) {
-  throw GradleException("Set all four ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD values to sign a release APK.")
-}
-if (hasReleaseSigning && !file(releaseStorePath!!).isFile) {
-  throw GradleException("ANDROID_KEYSTORE_PATH does not point to an available keystore file.")
-}
-
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -41,23 +28,11 @@ android {
     }
   }
 
-  signingConfigs {
-    if (hasReleaseSigning) {
-      create("release") {
-        storeFile = file(releaseStorePath!!)
-        storePassword = releaseStorePassword
-        keyAlias = releaseKeyAlias
-        keyPassword = releaseKeyPassword
-      }
-    }
-  }
-
   buildTypes {
     release {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
     }
   }
   compileOptions {

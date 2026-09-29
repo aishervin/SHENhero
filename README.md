@@ -31,19 +31,21 @@ Device-side encryption protects data at rest, but it cannot make a client API ke
 
 ## Checks and debug APKs
 
-The `Android build and release` GitHub Actions workflow runs `testDebugUnitTest` and builds debug APKs on pushes to `main`, pull requests, and manual runs. Successful runs publish the debug APKs as a downloadable workflow artifact.
+The `Android build and persistent-key release` GitHub Actions workflow runs `testDebugUnitTest` and builds unsigned release and debug APKs on branch pushes, pull requests, and manual runs. Successful runs publish the debug APKs as a downloadable workflow artifact.
 
 ## Signed releases
 
-Create one upload keystore and keep a secure backup outside the repository. Do not commit the keystore or its passwords. Configure these repository Actions secrets before publishing:
+Create one permanent JKS keystore and keep a backup outside the repository. Never regenerate it for a later release, and never commit the keystore or its passwords. Gradle creates unsigned release APKs; the release workflow aligns each APK, signs it with the repository keystore, verifies v2/v3 signatures (the app supports Android 7.0/API 24 and newer), checks its SHA-256 certificate fingerprint against the pin in the workflow, and removes the temporary decoded keystore when signing ends.
 
-For example, create a keystore locally with `keytool -genkeypair -v -keystore shenhero-upload.jks -alias shenhero -keyalg RSA -keysize 3072 -validity 10000`, then securely Base64-encode that file for the repository secret. Keep the original keystore and passwords backed up separately.
+Configure these repository Actions secrets:
 
-- `ANDROID_KEYSTORE_BASE64`: Base64-encoded keystore file
-- `ANDROID_KEYSTORE_PASSWORD`: keystore password
-- `ANDROID_KEY_ALIAS`: alias inside the keystore
-- `ANDROID_KEY_PASSWORD`: key password
+- `SIGNING_KEY`: Base64-encoded permanent JKS file
+- `KEYSTORE_PASSWORD`: master keystore password
+- `KEY_ALIAS`: alias inside the keystore
+- `KEY_PASSWORD`: key-specific password
 
-Push a version tag such as `v1.0.0`, or run the workflow manually and provide `version_tag`. The release job only runs after tests and the debug build pass. It signs and uploads universal and architecture-specific APKs to a GitHub Release. Keep using the same keystore for future releases so users can install updates over the previous version.
+Also configure the non-secret repository Actions variable `SIGNING_CERT_SHA256` with the key's SHA-256 certificate fingerprint (hexadecimal, colons optional). The workflow refuses to sign if either the keystore or any APK has a different fingerprint.
+
+Add the secrets and variable under **Settings > Secrets and variables > Actions**. Push a version tag such as `v1.0.0`, or run the workflow manually and provide `version_tag`. For a non-publishing signing check, manually run the workflow with `signing_check` enabled. The release job only runs after tests and the debug build pass. It publishes aligned, verified universal and architecture-specific APKs to a GitHub Release. Always use this same keystore for direct APK updates.
 
 The Gradle wrapper verifies the Gradle 9.3.1 distribution checksum before using it.
