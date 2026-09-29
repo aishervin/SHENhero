@@ -1,6 +1,10 @@
 package com.example.ui.screen
 
-import androidx.compose.animation.AnimatedVisibility
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -23,19 +27,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.components.ListeningIndicator
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.AssistantViewModel
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(viewModel: AssistantViewModel) {
-    val selectedTab by viewModel.selectedTab.collectAsState()
     val systemStatus by viewModel.systemStatus.collectAsState()
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -43,10 +45,18 @@ fun MainScreen(viewModel: AssistantViewModel) {
     val apiKey by viewModel.currentApiKey.collectAsState()
 
     var textInput by remember { mutableStateOf("") }
-    var showSettingsDialog by remember { mutableStateOf(false) }
-    var tempKeyInput by remember { mutableStateOf(apiKey) }
+    var showSettingsSheet by remember { mutableStateOf(false) }
+    var showToolsSheet by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.sendMessage("📎 [Attached File/Image]: $uri. Please analyze this file.", "chat")
+        }
+    }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -61,8 +71,8 @@ fun MainScreen(viewModel: AssistantViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(12.dp)
-                                .clip(RoundedCornerShape(6.dp))
+                                .size(10.dp)
+                                .clip(RoundedCornerShape(5.dp))
                                 .background(if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") ShenError else ShenEmerald)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -71,95 +81,26 @@ fun MainScreen(viewModel: AssistantViewModel) {
                                 "®️SHΞN™Hᴇʀᴏ",
                                 color = ShenCyan,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp
+                                fontSize = 16.sp
                             )
                             Text(
                                 systemStatus,
                                 color = ShenTextSecondary,
-                                fontSize = 10.sp
+                                fontSize = 9.sp
                             )
                         }
                     }
                 },
                 actions = {
-                    IconButton(onClick = { 
-                        tempKeyInput = apiKey
-                        showSettingsDialog = true 
-                    }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = ShenCyan)
+                    IconButton(onClick = { showToolsSheet = true }) {
+                        Icon(Icons.Default.Extension, contentDescription = "Agentic Tools", tint = ShenCyan)
+                    }
+                    IconButton(onClick = { showSettingsSheet = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings & API Keys", tint = ShenCyan)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = ShenSurfaceDark)
             )
-        },
-        bottomBar = {
-            NavigationBar(containerColor = ShenSurfaceDark) {
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, contentDescription = "HUD") },
-                    label = { Text("HUD", fontSize = 11.sp) },
-                    selected = selectedTab == 0,
-                    onClick = { viewModel.setTab(0) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = ShenCyan,
-                        selectedTextColor = ShenCyan,
-                        unselectedIconColor = ShenTextSecondary,
-                        unselectedTextColor = ShenTextSecondary,
-                        indicatorColor = ShenCardDark
-                    )
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Chat, contentDescription = "Neural Chat") },
-                    label = { Text("Chat", fontSize = 11.sp) },
-                    selected = selectedTab == 1,
-                    onClick = { viewModel.setTab(1) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = ShenCyan,
-                        selectedTextColor = ShenCyan,
-                        unselectedIconColor = ShenTextSecondary,
-                        unselectedTextColor = ShenTextSecondary,
-                        indicatorColor = ShenCardDark
-                    )
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Mic, contentDescription = "Voice") },
-                    label = { Text("Voice", fontSize = 11.sp) },
-                    selected = selectedTab == 2,
-                    onClick = { viewModel.setTab(2) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = ShenCyan,
-                        selectedTextColor = ShenCyan,
-                        unselectedIconColor = ShenTextSecondary,
-                        unselectedTextColor = ShenTextSecondary,
-                        indicatorColor = ShenCardDark
-                    )
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Extension, contentDescription = "Tools") },
-                    label = { Text("Tools", fontSize = 11.sp) },
-                    selected = selectedTab == 3,
-                    onClick = { viewModel.setTab(3) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = ShenCyan,
-                        selectedTextColor = ShenCyan,
-                        unselectedIconColor = ShenTextSecondary,
-                        unselectedTextColor = ShenTextSecondary,
-                        indicatorColor = ShenCardDark
-                    )
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                    label = { Text("Settings", fontSize = 11.sp) },
-                    selected = selectedTab == 4,
-                    onClick = { viewModel.setTab(4) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = ShenCyan,
-                        selectedTextColor = ShenCyan,
-                        unselectedIconColor = ShenTextSecondary,
-                        unselectedTextColor = ShenTextSecondary,
-                        indicatorColor = ShenCardDark
-                    )
-                )
-            }
         },
         containerColor = ShenBgDark
     ) { paddingValues ->
@@ -168,58 +109,276 @@ fun MainScreen(viewModel: AssistantViewModel) {
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            when (selectedTab) {
-                0 -> HudDashboardTab(viewModel)
-                1 -> ChatTab(viewModel, messages, listState, textInput, onTextChanged = { textInput = it }, isLoading)
-                2 -> VoiceTab(viewModel, isListening)
-                3 -> ToolsTab(viewModel)
-                4 -> SettingsScreen(viewModel)
+            // Aether Living Background Shader
+            AetherShaderBackground()
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Top Section: Central Holographic Avatar Core & Status Banner
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Central Living Holographic Avatar Core (Always active on mobile screen)
+                    Box(
+                        modifier = Modifier
+                            .size(110.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isListening) {
+                            ListeningIndicator(size = 110.dp, color = ShenEmerald)
+                        }
+
+                        val infiniteTransition = rememberInfiniteTransition(label = "avatarPulse")
+                        val pulseScale by infiniteTransition.animateFloat(
+                            initialValue = 0.95f,
+                            targetValue = 1.05f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(1200, easing = FastOutSlowInEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "pulse"
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .size((85 * pulseScale).dp)
+                                .clip(RoundedCornerShape(42.dp))
+                                .background(
+                                    Brush.radialGradient(
+                                        listOf(ShenCardDark, ShenSurfaceDark, ShenBgDark)
+                                    )
+                                )
+                                .border(2.dp, if (isListening) ShenEmerald else ShenCyan, RoundedCornerShape(42.dp))
+                                .clickable {
+                                    viewModel.toggleVoiceListening()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = if (isListening) Icons.Default.Mic else Icons.Default.SmartToy,
+                                    contentDescription = "SHEN Avatar",
+                                    tint = if (isListening) ShenEmerald else ShenCyan,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    if (isListening) "LISTENING" else "SHEN AI",
+                                    color = if (isListening) ShenEmerald else ShenCyan,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                // Middle Section: Unified Chat & Grounded Results Feed
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    if (messages.isEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                "®️SHΞN™Hᴇʀᴏ Neural Core Online",
+                                color = ShenCyan,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "Ask anything, search the web in real-time, upload files, or speak your command. SHEN handles everything seamlessly.",
+                                color = ShenTextSecondary,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(messages) { msg ->
+                                val isUser = msg.sender == "user"
+                                val isError = msg.mode == "error"
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .widthIn(max = 320.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(if (isUser) ShenCardDark else if (isError) ShenError.copy(alpha = 0.2f) else ShenSurfaceDark)
+                                            .border(1.dp, if (isUser) ShenCyan.copy(alpha = 0.4f) else if (isError) ShenError else ShenEmerald.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+                                            .padding(12.dp)
+                                    ) {
+                                        Column {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = if (isUser) Icons.Default.Person else Icons.Default.SmartToy,
+                                                    contentDescription = null,
+                                                    tint = if (isUser) ShenCyan else ShenEmerald,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = if (isUser) "OPERATOR" else "SHEN HERO",
+                                                    color = if (isUser) ShenCyan else ShenEmerald,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                if (msg.mode == "search") {
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("🌐 Grounded", color = ShenCyan, fontSize = 9.sp)
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = msg.text,
+                                                color = ShenTextPrimary,
+                                                fontSize = 13.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (isLoading) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = ShenCyan,
+                        trackColor = ShenCardDark
+                    )
+                }
+
+                // Bottom Section: Universal Natural Language Command Bar & File Uploader
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = ShenSurfaceDark),
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(1.dp, ShenCyan.copy(alpha = 0.4f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Attachment / File Upload Button
+                        IconButton(
+                            onClick = {
+                                photoPickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(Icons.Default.AttachFile, contentDescription = "Upload File", tint = ShenCyan)
+                        }
+
+                        // Voice Listening Toggle Button
+                        IconButton(
+                            onClick = { viewModel.toggleVoiceListening() },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isListening) Icons.Default.Mic else Icons.Default.MicNone,
+                                contentDescription = "Voice Input",
+                                tint = if (isListening) ShenEmerald else ShenTextSecondary
+                            )
+                        }
+
+                        // Natural Language Text Input
+                        OutlinedTextField(
+                            value = textInput,
+                            onValueChange = { textInput = it },
+                            placeholder = { Text("Ask SHEN, search web, or give command...", color = ShenTextSecondary, fontSize = 12.sp) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                focusedTextColor = ShenTextPrimary,
+                                unfocusedTextColor = ShenTextPrimary,
+                                cursorColor = ShenCyan
+                            ),
+                            maxLines = 2
+                        )
+
+                        // Send Button with Intent Parsing
+                        IconButton(
+                            onClick = {
+                                if (textInput.isNotBlank()) {
+                                    val prompt = textInput
+                                    textInput = ""
+                                    val lower = prompt.lowercase()
+                                    val mode = if (lower.contains("search") || lower.contains("google") || lower.contains("news") || lower.contains("latest") || lower.contains("چه خبر") || lower.contains("امروز")) {
+                                        "search"
+                                    } else {
+                                        "chat"
+                                    }
+                                    viewModel.sendMessage(prompt, mode)
+                                }
+                            },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(ShenCyan)
+                        ) {
+                            Icon(Icons.Default.Send, contentDescription = "Send", tint = ShenBgDark)
+                        }
+                    }
+                }
             }
         }
     }
 
-    if (showSettingsDialog) {
-        AlertDialog(
-            onDismissRequest = { showSettingsDialog = false },
-            title = { Text("SHEN Neural Configuration", color = ShenCyan) },
-            text = {
-                Column {
-                    Text("Enter your Gemini API Key to activate SHEN Hero neural capabilities:", color = ShenTextPrimary, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = tempKeyInput,
-                        onValueChange = { tempKeyInput = it },
-                        label = { Text("GEMINI_API_KEY") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = ShenCyan,
-                            unfocusedBorderColor = ShenTextSecondary,
-                            focusedLabelColor = ShenCyan,
-                            cursorColor = ShenCyan
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Note: The key is securely stored in local memory and used for direct Gemini API calls.", color = ShenTextSecondary, fontSize = 11.sp)
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.updateApiKey(tempKeyInput)
-                        showSettingsDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ShenCyan)
-                ) {
-                    Text("Save & Connect", color = ShenBgDark)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSettingsDialog = false }) {
-                    Text("Cancel", color = ShenTextSecondary)
-                }
-            },
-            containerColor = ShenCardDark
-        )
+    // Settings Modal Sheet
+    if (showSettingsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSettingsSheet = false },
+            containerColor = ShenBgDark
+        ) {
+            SettingsScreen(viewModel)
+        }
+    }
+
+    // Tools Modal Sheet
+    if (showToolsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showToolsSheet = false },
+            containerColor = ShenBgDark
+        ) {
+            ToolsSheetContent(viewModel, onClose = { showToolsSheet = false })
+        }
     }
 }
 
@@ -241,465 +400,57 @@ fun AetherShaderBackground() {
         val height = size.height
         val minDim = minOf(width, height)
 
-        // Draw dark background base
         drawRect(color = ShenBgDark)
 
-        // Render Aether Aurora sine wave lines mirroring the WebGL fragment shader
-        for (i in 0..5) {
-            val progress = (time * 0.5f + i * 40f) % width
-            val alpha = (0.15f + 0.05f * i)
+        for (i in 0..4) {
+            val alpha = (0.1f + 0.04f * i)
             drawCircle(
                 color = if (i % 2 == 0) ShenCyan.copy(alpha = alpha) else ShenEmerald.copy(alpha = alpha),
-                radius = minDim * (0.2f + i * 0.12f),
-                center = androidx.compose.ui.geometry.Offset(width / 2f + kotlin.math.sin(time * 0.1f + i) * 50f, height / 2f + kotlin.math.cos(time * 0.15f + i) * 50f),
-                style = Stroke(width = 2.dp.toPx())
+                radius = minDim * (0.25f + i * 0.15f),
+                center = androidx.compose.ui.geometry.Offset(width / 2f, height / 2f),
+                style = Stroke(width = 1.5.dp.toPx())
             )
         }
     }
 }
 
 @Composable
-fun HudDashboardTab(viewModel: AssistantViewModel) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        // Aether Living Shader Background
-        AetherShaderBackground()
-
-        // Dark gradient overlay for readability (matching AetherHero overlay)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color(0xBB000000),
-                            Color(0x66000000),
-                            Color(0x33000000)
-                        )
-                    )
-                )
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Header / Hero Title
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    "®️SHΞN™Hᴇʀᴏ",
-                    color = ShenCyan,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 28.sp,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    "JARVIS Neural Assistant Active. Living Aether Core Online.",
-                    color = ShenTextPrimary,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-
-            // Central Living Holographic Avatar Core
-            Box(
-                modifier = Modifier
-                    .size(190.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                val infiniteTransition = rememberInfiniteTransition(label = "avatarPulse")
-                val pulseScale by infiniteTransition.animateFloat(
-                    initialValue = 0.92f,
-                    targetValue = 1.08f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1500, easing = FastOutSlowInEasing),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "pulse"
-                )
-
-                // Outer Ring
-                Box(
-                    modifier = Modifier
-                        .size((170 * pulseScale).dp)
-                        .clip(RoundedCornerShape(85.dp))
-                        .border(2.dp, ShenCyan.copy(alpha = 0.6f), RoundedCornerShape(85.dp))
-                )
-
-                // Inner Core Avatar Button / Display
-                Box(
-                    modifier = Modifier
-                        .size(130.dp)
-                        .clip(RoundedCornerShape(65.dp))
-                        .background(
-                            Brush.radialGradient(
-                                listOf(ShenCardDark, ShenSurfaceDark, ShenBgDark)
-                            )
-                        )
-                        .border(3.dp, ShenEmerald, RoundedCornerShape(65.dp))
-                        .clickable {
-                            viewModel.setTab(1)
-                            viewModel.sendMessage("SHEN Hero online. How may I assist you today, Operator?", "chat")
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.SmartToy,
-                            contentDescription = "SHEN Avatar",
-                            tint = ShenCyan,
-                            modifier = Modifier.size(42.dp)
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "SHEN AI",
-                            color = ShenEmerald,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
-                        Text(
-                            "READY",
-                            color = ShenTextSecondary,
-                            fontSize = 9.sp
-                        )
-                    }
-                }
-            }
-
-            // Quick Actions & CTAs (matching APEX-UI AetherHero buttons)
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            viewModel.setTab(1)
-                            viewModel.sendMessage("Initialize full neural diagnostic scan.", "chat")
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ShenCyan.copy(alpha = 0.2f)),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, ShenCyan)
-                    ) {
-                        Icon(Icons.Default.Bolt, contentDescription = "Initialize", tint = ShenCyan)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Initialize", color = ShenCyan, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = { viewModel.setTab(2) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ShenEmerald.copy(alpha = 0.2f)),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, ShenEmerald)
-                    ) {
-                        Icon(Icons.Default.Mic, contentDescription = "Voice", tint = ShenEmerald)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Voice Mode", color = ShenEmerald, fontWeight = FontWeight.Bold)
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-        }
-    }
-}
-
-@Composable
-fun ChatTab(
-    viewModel: AssistantViewModel,
-    messages: List<ChatMessageEntity>,
-    listState: androidx.compose.foundation.lazy.LazyListState,
-    textInput: String,
-    onTextChanged: (String) -> Unit,
-    isLoading: Boolean
-) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        LazyList(
-            listState = listState,
-            messages = messages,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp)
-        )
-
-        if (isLoading) {
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth(),
-                color = ShenCyan,
-                trackColor = ShenCardDark
-            )
-        }
-
-        // Input bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(ShenSurfaceDark)
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = textInput,
-                onValueChange = onTextChanged,
-                placeholder = { Text("Command SHEN Hero...", color = ShenTextSecondary) },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 8.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = ShenCyan,
-                    unfocusedBorderColor = ShenTextSecondary,
-                    focusedTextColor = ShenTextPrimary,
-                    unfocusedTextColor = ShenTextPrimary,
-                    cursorColor = ShenCyan
-                ),
-                maxLines = 3
-            )
-            IconButton(
-                onClick = {
-                    if (textInput.isNotBlank()) {
-                        viewModel.sendMessage(textInput)
-                        onTextChanged("")
-                    }
-                },
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(ShenCyan)
-            ) {
-                Icon(Icons.Default.Send, contentDescription = "Send", tint = ShenBgDark)
-            }
-        }
-    }
-}
-
-@Composable
-fun LazyList(listState: androidx.compose.foundation.lazy.LazyListState, messages: List<ChatMessageEntity>, modifier: Modifier = Modifier) {
-    LazyColumn(
-        state = listState,
-        modifier = modifier,
-        contentPadding = PaddingValues(vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(messages) { msg ->
-            val isUser = msg.sender == "user"
-            val isError = msg.mode == "error"
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-            ) {
-                Box(
-                    modifier = Modifier
-                        .widthIn(max = 300.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (isUser) ShenCardDark else if (isError) ShenError.copy(alpha = 0.2f) else ShenSurfaceDark)
-                        .border(1.dp, if (isUser) ShenCyan.copy(alpha = 0.5f) else if (isError) ShenError else ShenEmerald.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                        .padding(12.dp)
-                ) {
-                    Column {
-                        Text(
-                            text = if (isUser) "OPERATOR" else "SHEN HERO",
-                            color = if (isUser) ShenCyan else ShenEmerald,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = msg.text,
-                            color = ShenTextPrimary,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun VoiceTab(viewModel: AssistantViewModel, isListening: Boolean) {
-    val infiniteTransition = rememberInfiniteTransition(label = "listeningAnimation")
-    
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (isListening) 1.25f else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "micPulse"
-    )
-
-    val waveAnim1 by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = if (isListening) 1f else 0.3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(400, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "wave1"
-    )
-
-    val waveAnim2 by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = if (isListening) 0.9f else 0.2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "wave2"
-    )
-
-    val waveAnim3 by infiniteTransition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = if (isListening) 1f else 0.4f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(500, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "wave3"
-    )
-
+fun ToolsSheetContent(viewModel: AssistantViewModel, onClose: () -> Unit) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .fillMaxWidth()
+            .padding(20.dp)
     ) {
-        Text("VOICE ASSISTANT MATRIX", color = ShenCyan, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // Sound Wave Visualizer when listening
-        Row(
-            modifier = Modifier.height(40.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val barHeights = listOf(waveAnim1, waveAnim2, waveAnim3, waveAnim2, waveAnim1)
-            barHeights.forEach { scale ->
-                Box(
-                    modifier = Modifier
-                        .width(4.dp)
-                        .height((36 * scale).dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(if (isListening) ShenEmerald else ShenTextSecondary.copy(alpha = 0.3f))
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Mic Button with Pulse Rings
-        Box(
-            modifier = Modifier.size(160.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            if (isListening) {
-                Box(
-                    modifier = Modifier
-                        .size((140 * pulseScale).dp)
-                        .clip(RoundedCornerShape(70.dp))
-                        .background(ShenEmerald.copy(alpha = 0.15f))
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .size(130.dp)
-                    .clip(RoundedCornerShape(65.dp))
-                    .background(if (isListening) ShenEmerald.copy(alpha = 0.25f) else ShenCardDark)
-                    .border(3.dp, if (isListening) ShenEmerald else ShenCyan, RoundedCornerShape(65.dp))
-                    .clickable { viewModel.toggleVoiceListening() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = if (isListening) Icons.Default.Mic else Icons.Default.MicNone,
-                    contentDescription = "Microphone",
-                    tint = if (isListening) ShenEmerald else ShenCyan,
-                    modifier = Modifier.size(52.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-        Text(
-            text = if (isListening) "🎙️ LISTENING... Speak your command to SHEN" else "Tap microphone to initiate voice conversation",
-            color = if (isListening) ShenEmerald else ShenTextSecondary,
-            fontSize = 13.sp,
-            fontWeight = if (isListening) FontWeight.Bold else FontWeight.Normal,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = ShenCardDark),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Voice Neural Prompts", color = ShenCyan, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("• \"SHEN, what is the current system status?\"", color = ShenTextPrimary, fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text("• \"Calculate orbital trajectory for satellite launch\"", color = ShenTextPrimary, fontSize = 12.sp)
-            }
-        }
-    }
-}
-
-@Composable
-fun ToolsTab(viewModel: AssistantViewModel) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Text("AGENTIC TOOLKIT", color = ShenCyan, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text("AGENTIC TOOLKIT & GROUNDING", color = ShenCyan, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         Spacer(modifier = Modifier.height(16.dp))
 
         ToolItem(
-            title = "Neural Web Search Grounding",
-            description = "Fetch real-time data indexed via Gemini search tools.",
+            title = "🌐 Real-Time Web Search Grounding",
+            description = "Query Google Search for latest news and live facts.",
             onClick = {
-                viewModel.setTab(1)
-                viewModel.sendMessage("Search Google for latest breakthrough in artificial intelligence.", "search")
+                onClose()
+                viewModel.sendMessage("Search Google for latest breakthrough in artificial intelligence today.", "search")
             }
         )
         Spacer(modifier = Modifier.height(12.dp))
         ToolItem(
-            title = "Geospatial Maps Grounding",
-            description = "Query location intelligence and coordinates.",
+            title = "📍 Geospatial Maps Intelligence",
+            description = "Analyze location data and coordinates.",
             onClick = {
-                viewModel.setTab(1)
-                viewModel.sendMessage("Provide geospatial analysis for San Francisco tech sector.", "maps")
+                onClose()
+                viewModel.sendMessage("Provide geospatial analysis for San Francisco.", "chat")
             }
         )
         Spacer(modifier = Modifier.height(12.dp))
         ToolItem(
-            title = "System Diagnostics & Self-Test",
-            description = "Verify local memory, CPU load, and neural link integrity.",
+            title = "⚙️ Neural System Diagnostics",
+            description = "Run full system diagnostic check.",
             onClick = {
-                viewModel.setTab(1)
-                viewModel.sendMessage("Execute system diagnostics report.", "chat")
+                onClose()
+                viewModel.sendMessage("Run full system diagnostic report.", "chat")
             }
         )
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
