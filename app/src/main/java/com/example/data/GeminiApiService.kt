@@ -7,22 +7,22 @@ import okhttp3.ResponseBody
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.Header
 import retrofit2.http.POST
-import retrofit2.http.Query
 import retrofit2.http.Streaming
 import java.util.concurrent.TimeUnit
 
 interface GeminiApiService {
-    @POST("v1beta/models/gemini-3.5-flash:generateContent")
+    @POST("v1beta/models/gemini-3.8-flash:generateContent")
     suspend fun generateContent(
-        @Query("key") apiKey: String,
+        @Header("x-goog-api-key") apiKey: String,
         @Body request: GenerateContentRequest
     ): GenerateContentResponse
 
-    @POST("v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse")
+    @POST("v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse")
     @Streaming
     suspend fun generateContentStream(
-        @Query("key") apiKey: String,
+        @Header("x-goog-api-key") apiKey: String,
         @Body request: GenerateContentRequest
     ): ResponseBody
 }
@@ -37,7 +37,7 @@ object GeminiApiClient {
         .build()
 
     val service: GeminiApiService by lazy {
-        val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+        val json = Json { ignoreUnknownKeys = true; coerceInputValues = true; explicitNulls = false }
         Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(okHttpClient)

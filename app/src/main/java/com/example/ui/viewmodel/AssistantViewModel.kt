@@ -1,55 +1,47 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.BuildConfig
-import com.example.data.local.AssistantDatabase
 import com.example.data.Content
 import com.example.data.GenerateContentRequest
 import com.example.data.GeminiApiClient
+import com.example.data.InlineData
 import com.example.data.Part
+import com.example.data.SecurePreferences
+import com.example.data.buildGeminiConversation
+import com.example.data.local.AssistantDatabase
 import com.example.data.local.ChatMessageEntity
-import kotlinx.coroutines.flow.*
+import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import retrofit2.HttpException
 
 class AssistantViewModel(application: Application) : AndroidViewModel(application) {
     private val chatDao = AssistantDatabase.getDatabase(application).chatDao()
+    private val securePreferences = SecurePreferences(application)
+    private val requestMutex = Mutex()
 
     val messages: StateFlow<List<ChatMessageEntity>> = chatDao.getAllMessages()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .map { saved -> saved.map { it.copy(text = securePreferences.decryptValue(it.text)) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val prefs = application.getSharedPreferences("shen_prefs", android.content.Context.MODE_PRIVATE)
-
-    private val _currentApiKey = MutableStateFlow(prefs.getString("gemini_api_key", BuildConfig.GEMINI_API_KEY) ?: BuildConfig.GEMINI_API_KEY)
+    private val _currentApiKey = MutableStateFlow(securePreferences.getString(GEMINI_KEY))
     val currentApiKey: StateFlow<String> = _currentApiKey.asStateFlow()
-
-    private val _githubPat = MutableStateFlow(prefs.getString("github_pat", "") ?: "")
-    val githubPat: StateFlow<String> = _githubPat.asStateFlow()
-
-    private val _cloudflareToken = MutableStateFlow(prefs.getString("cloudflare_token", "") ?: "")
-    val cloudflareToken: StateFlow<String> = _cloudflareToken.asStateFlow()
-
-    private val _serperKey = MutableStateFlow(prefs.getString("serper_key", "") ?: "")
-    val serperKey: StateFlow<String> = _serperKey.asStateFlow()
-
-    private val _deepseekKey = MutableStateFlow(prefs.getString("deepseek_key", "") ?: "")
-    val deepseekKey: StateFlow<String> = _deepseekKey.asStateFlow()
-
-    private val _openaiKey = MutableStateFlow(prefs.getString("openai_key", "") ?: "")
-    val openaiKey: StateFlow<String> = _openaiKey.asStateFlow()
-
-    private val _openrouterKey = MutableStateFlow(prefs.getString("openrouter_key", "") ?: "")
-    val openrouterKey: StateFlow<String> = _openrouterKey.asStateFlow()
-
-    private val _groqKey = MutableStateFlow(prefs.getString("groq_key", "") ?: "")
-    val groqKey: StateFlow<String> = _groqKey.asStateFlow()
-
-    private val _telegramToken = MutableStateFlow(prefs.getString("telegram_token", "") ?: "")
-    val telegramToken: StateFlow<String> = _telegramToken.asStateFlow()
 
     private val _isListening = MutableStateFlow(false)
     val isListening: StateFlow<Boolean> = _isListening.asStateFlow()
@@ -57,92 +49,151 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    private val _selectedTab = MutableStateFlow(0) // 0: HUD, 1: Chat, 2: Voice, 3: Tools, 4: Settings
-    val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
-
-    private val _systemStatus = MutableStateFlow("ONLINE · NEURAL LIVE LINK ACTIVE")
+    private val _systemStatus = MutableStateFlow("READY · GEMINI ASSISTANT")
     val systemStatus: StateFlow<String> = _systemStatus.asStateFlow()
 
-    fun updateApiKey(key: String) {
-        _currentApiKey.value = key
-        prefs.edit().putString("gemini_api_key", key).apply()
-    }
-
-    fun updateIntegrationKey(type: String, value: String) {
-        val editor = prefs.edit()
-        when (type) {
-            "github" -> { _githubPat.value = value; editor.putString("github_pat", value) }
-            "cloudflare" -> { _cloudflareToken.value = value; editor.putString("cloudflare_token", value) }
-            "serper" -> { _serperKey.value = value; editor.putString("serper_key", value) }
-            "deepseek" -> { _deepseekKey.value = value; editor.putString("deepseek_key", value) }
-            "openai" -> { _openaiKey.value = value; editor.putString("openai_key", value) }
-            "openrouter" -> { _openrouterKey.value = value; editor.putString("openrouter_key", value) }
-            "groq" -> { _groqKey.value = value; editor.putString("groq_key", value) }
-            "telegram" -> { _telegramToken.value = value; editor.putString("telegram_token", value) }
-        }
-        editor.apply()
-    }
-
-    fun setTab(index: Int) {
-        _selectedTab.value = index
-    }
-
-    fun toggleVoiceListening() {
-        _isListening.value = !_isListening.value
-        if (_isListening.value) {
-            _systemStatus.value = "LISTENING FOR LIVE VOICE STREAM..."
-        } else {
-            _systemStatus.value = "ONLINE · NEURAL LIVE LINK ACTIVE"
-        }
-    }
-
-    fun sendMessage(userPrompt: String, mode: String = "chat") {
-        if (userPrompt.isBlank()) return
-        val apiKey = _currentApiKey.value
-        if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
-            viewModelScope.launch {
-                chatDao.insertMessage(ChatMessageEntity(sender = "user", text = userPrompt, mode = mode))
-                chatDao.insertMessage(ChatMessageEntity(sender = "shen", text = "⚠️ ERROR: Gemini API key is not configured. Please enter your valid API key in the Settings screen.", mode = "error"))
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            chatDao.getAllMessagesOnce().forEach { message ->
+                if (!message.text.startsWith(ENCRYPTED_PREFIX)) {
+                    chatDao.updateMessage(message.copy(text = securePreferences.encryptValue(message.text)))
+                }
             }
-            return
         }
+    }
+
+    fun updateApiKey(key: String) {
+        securePreferences.putString(GEMINI_KEY, key.trim())
+        _currentApiKey.value = key.trim()
+    }
+
+    fun setListening(listening: Boolean) {
+        _isListening.value = listening
+        _systemStatus.value = if (listening) "LISTENING" else "READY · GEMINI ASSISTANT"
+    }
+
+    fun sendMessage(userPrompt: String, mode: String = "chat", imageUri: Uri? = null) {
+        if (userPrompt.isBlank() || !requestMutex.tryLock()) return
 
         viewModelScope.launch {
-            chatDao.insertMessage(ChatMessageEntity(sender = "user", text = userPrompt, mode = mode))
             _isLoading.value = true
-            _systemStatus.value = "ANALYZING LIVE NEURAL QUERY..."
-
+            _systemStatus.value = "CONNECTING TO GEMINI"
             try {
-                val systemPrompt = "You are SHEN Hero (®️SHΞN™Hᴇʀᴏ), an ultra-advanced JARVIS-style sci-fi AI assistant supporting live search, maps, multi-provider integrations (GitHub, Cloudflare, Serper, DeepSeek, OpenAI, OpenRouter, Groq, Telegram), code analysis, statistics, and multi-format research output. Respond with precision, futuristic flair, and expert intelligence."
-                
-                // Add Google Search grounding tool if mode is search
-                val toolsList = if (mode == "search") {
-                    listOf(JsonObject(mapOf("googleSearch" to JsonObject(emptyMap()))))
-                } else null
+                val recentMessages = chatDao.getRecentMessages(MAX_CONTEXT_MESSAGES)
+                    .asReversed()
+                    .map { it.copy(text = securePreferences.decryptValue(it.text)) }
+                val imagePart = imageUri?.let { withContext(Dispatchers.IO) { readImagePart(it) } }
+                val visiblePrompt = if (imagePart == null) userPrompt else "$userPrompt\n[Image attached]"
+                saveMessage(ChatMessageEntity(sender = "user", text = visiblePrompt, mode = mode))
+
+                val apiKey = _currentApiKey.value
+                if (apiKey.isBlank()) {
+                    saveMessage(
+                        ChatMessageEntity(
+                            sender = "shen",
+                            text = "Add your Gemini API key in Settings before sending a message.",
+                            mode = "error"
+                        )
+                    )
+                    return@launch
+                }
 
                 val request = GenerateContentRequest(
-                    contents = listOf(Content(parts = listOf(Part(text = userPrompt)))),
-                    systemInstruction = Content(parts = listOf(Part(text = systemPrompt))),
-                    tools = toolsList
+                    contents = buildGeminiConversation(recentMessages, userPrompt, imagePart),
+                    systemInstruction = Content(
+                        parts = listOf(
+                            Part(
+                                text = "You are SHEN Hero, a helpful assistant. Be clear and accurate. " +
+                                    "For current information, use Google Search grounding when it is enabled."
+                            )
+                        )
+                    ),
+                    tools = if (mode == "search") listOf(JsonObject(mapOf("googleSearch" to JsonObject(emptyMap())))) else null
                 )
 
                 val response = GeminiApiClient.service.generateContent(apiKey, request)
-                val replyText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text 
-                    ?: "Live analysis complete. No direct response generated."
-
-                chatDao.insertMessage(ChatMessageEntity(sender = "shen", text = replyText, mode = mode))
-            } catch (e: Exception) {
-                chatDao.insertMessage(ChatMessageEntity(sender = "shen", text = "Neural connection error: ${e.localizedMessage ?: "Unknown error"}", mode = "error"))
+                val replyText = response.candidates
+                    ?.firstOrNull()
+                    ?.content
+                    ?.parts
+                    ?.mapNotNull { it.text }
+                    ?.joinToString("\n")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Gemini returned no text. Please try again."
+                saveMessage(ChatMessageEntity(sender = "shen", text = replyText, mode = mode))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                val userMessage = when (error) {
+                    is HttpException -> when (error.code()) {
+                        400 -> "Gemini rejected the request. Check the selected model and prompt, then try again."
+                        403 -> "Gemini rejected this API key or the project does not have access to this model."
+                        404 -> "The configured Gemini model was not found. Update the model endpoint and try again."
+                        429 -> "Gemini rate limit or quota reached. Wait a while or review billing and usage limits."
+                        else -> "Gemini is temporarily unavailable (${error.code()}). Try again shortly."
+                    }
+                    is IllegalArgumentException -> error.message ?: "The selected image could not be processed."
+                    else -> "I couldn't reach Gemini. Check your internet connection and try again."
+                }
+                saveMessage(
+                    ChatMessageEntity(
+                        sender = "shen",
+                        text = userMessage,
+                        mode = "error"
+                    )
+                )
             } finally {
                 _isLoading.value = false
-                _systemStatus.value = "ONLINE · NEURAL LIVE LINK ACTIVE"
+                _systemStatus.value = "READY · GEMINI ASSISTANT"
+                requestMutex.unlock()
             }
         }
     }
 
     fun clearChat() {
-        viewModelScope.launch {
-            chatDao.clearHistory()
+        viewModelScope.launch { chatDao.clearHistory() }
+    }
+
+    private suspend fun saveMessage(message: ChatMessageEntity) {
+        chatDao.insertMessage(message.copy(text = securePreferences.encryptValue(message.text)))
+    }
+
+    private suspend fun readImagePart(uri: Uri): Part = withContext(Dispatchers.IO) {
+        val resolver = getApplication<Application>().contentResolver
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "The selected image could not be read." }
+
+        var sampleSize = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sampleSize > MAX_IMAGE_SIDE) sampleSize *= 2
+        val bitmap = resolver.openInputStream(uri)?.use { input ->
+            BitmapFactory.decodeStream(
+                input,
+                null,
+                BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            )
+        } ?: throw IllegalArgumentException("The selected image could not be opened.")
+
+        val encoded = ByteArrayOutputStream().use { output ->
+            bitmap.useAndRecycle { compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output) }
+            output.toByteArray()
         }
+        require(encoded.size <= MAX_IMAGE_BYTES) { "This image is too large to send. Choose a smaller image." }
+        Part(inlineData = InlineData(mimeType = "image/jpeg", data = Base64.encodeToString(encoded, Base64.NO_WRAP)))
+    }
+
+    private inline fun <T> Bitmap.useAndRecycle(block: Bitmap.() -> T): T = try {
+        block()
+    } finally {
+        recycle()
+    }
+
+    private companion object {
+        const val GEMINI_KEY = "gemini_api_key"
+        const val MAX_CONTEXT_MESSAGES = 20
+        const val MAX_IMAGE_SIDE = 1_536
+        const val MAX_IMAGE_BYTES = 5 * 1024 * 1024
+        const val JPEG_QUALITY = 85
+        const val ENCRYPTED_PREFIX = "enc:v1:"
     }
 }
