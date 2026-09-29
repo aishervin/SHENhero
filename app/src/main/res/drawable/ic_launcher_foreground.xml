@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer Hologram Ring -->
+    <path
+        android:strokeColor="#00F0FF"
+        android:strokeWidth="3"
+        android:fillColor="#00000000"
+        android:pathData="M54,14 A40,40 0 1,1 53.9,14 Z" />
+    <!-- Inner Core Hexagon / Shield -->
+    <path
+        android:fillColor="#00F0FF"
+        android:pathData="M54,28 L78,42 L78,70 L54,84 L30,70 L30,42 Z"
+        android:fillAlpha="0.2"
+        android:strokeColor="#00FF9D"
+        android:strokeWidth="2" />
+    <!-- Center AI Spark / Node -->
+    <path
+        android:fillColor="#00FF9D"
+        android:pathData="M54,40 L60,52 L72,56 L60,60 L54,72 L48,60 L36,56 L48,52 Z" />
+</vector>

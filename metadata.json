@@ -1,0 +1,6 @@
+{
+  "name": "SHEN Hero",
+  "description": "JARVIS-style futuristic personal assistant powered by Gemini AI, featuring sci-fi HUD UI, voice interactions, search/maps grounding, and agentic tools.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
