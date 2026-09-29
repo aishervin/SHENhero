@@ -1,0 +1,221 @@
+name: Android build and persistent-key release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: "Optional release version (for example v1.0.0). Leave blank to run checks only."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Test and build debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Run unit tests and build debug APKs
+        run: gradle --no-daemon testDebugUnitTest assembleDebug
+
+      - name: Save debug APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: SHENhero-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Align, sign, verify, and publish APKs
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version_tag != '')
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Validate release version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version_tag }}
+        run: |
+          set -euo pipefail
+          version="${REQUESTED_VERSION:-$GITHUB_REF_NAME}"
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
+            echo "Use a version like v1.0.0 or v1.0.0-rc.1."
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build unsigned release APKs
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          version_name="${RELEASE_VERSION#v}"
+          gradle --no-daemon assembleRelease \
+            -PversionCode="$GITHUB_RUN_NUMBER" \
+            -PversionName="$version_name"
+
+      - name: Align, sign, and verify with the persistent keystore
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          EXPECTED_CERT_SHA256: ${{ vars.SIGNING_CERT_SHA256 }}
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          umask 077
+
+          key_file="$RUNNER_TEMP/shenhero-release.jks"
+          trap 'rm -f "$key_file"' EXIT
+
+          for name in SIGNING_KEY KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD EXPECTED_CERT_SHA256; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing required GitHub Actions secret or variable: $name"
+              exit 1
+            fi
+          done
+
+          printf '%s' "$SIGNING_KEY" | base64 --decode > "$key_file"
+          test -s "$key_file"
+
+          normalize_fingerprint() {
+            tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]'
+          }
+
+          expected_fingerprint="$(printf '%s' "$EXPECTED_CERT_SHA256" | normalize_fingerprint)"
+          if [[ ! "$expected_fingerprint" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "SIGNING_CERT_SHA256 must be a SHA-256 certificate fingerprint."
+            exit 1
+          fi
+
+          key_details="$(keytool -list -v -keystore "$key_file" \
+            -storepass:env KEYSTORE_PASSWORD -alias "$KEY_ALIAS")"
+          key_fingerprint="$(printf '%s\n' "$key_details" \
+            | awk -F': ' '/SHA256:/{print $2; exit}' | normalize_fingerprint)"
+          if [[ "$key_fingerprint" != "$expected_fingerprint" ]]; then
+            echo "The configured keystore does not match SIGNING_CERT_SHA256. Refusing to sign."
+            exit 1
+          fi
+
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [[ -z "$sdk_root" ]]; then
+            echo "Android SDK root was not configured."
+            exit 1
+          fi
+          build_tools_dir="$sdk_root/build-tools/36.0.0"
+          zipalign="$build_tools_dir/zipalign"
+          apksigner="$build_tools_dir/apksigner"
+          if [[ ! -x "$zipalign" || ! -x "$apksigner" ]]; then
+            sdkmanager "build-tools;36.0.0"
+          fi
+          test -x "$zipalign"
+          test -x "$apksigner"
+
+          mkdir -p release_apks
+          mapfile -t unsigned_apks < <(find app/build/outputs/apk/release -type f -name '*-unsigned.apk' -print | sort)
+          if [[ ${#unsigned_apks[@]} -eq 0 ]]; then
+            echo "No unsigned release APKs were produced."
+            exit 1
+          fi
+
+          for unsigned_apk in "${unsigned_apks[@]}"; do
+            apk_name="$(basename "${unsigned_apk%-unsigned.apk}")"
+            aligned_apk="$RUNNER_TEMP/$apk_name-aligned.apk"
+
+            "$zipalign" -v -p 4 "$unsigned_apk" "$aligned_apk"
+            "$apksigner" sign \
+              --ks "$key_file" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass env:KEYSTORE_PASSWORD \
+              --key-pass env:KEY_PASSWORD \
+              --v1-signing-enabled true \
+              --v2-signing-enabled true \
+              --v3-signing-enabled true \
+              "$aligned_apk"
+
+            verification="$("$apksigner" verify --verbose --print-certs "$aligned_apk")"
+            printf '%s\n' "$verification"
+            for scheme in "v1 scheme (JAR signing)" "v2 scheme (APK Signature Scheme v2)" "v3 scheme (APK Signature Scheme v3)"; do
+              if ! printf '%s\n' "$verification" | grep -Fq "Verified using $scheme: true"; then
+                echo "APK signature verification did not confirm $scheme."
+                exit 1
+              fi
+            done
+
+            apk_fingerprint="$(printf '%s\n' "$verification" \
+              | awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print $2; exit}' \
+              | normalize_fingerprint)"
+            if [[ "$apk_fingerprint" != "$expected_fingerprint" ]]; then
+              echo "Signed APK certificate fingerprint differs from the pinned persistent key."
+              exit 1
+            fi
+
+            "$zipalign" -c -v 4 "$aligned_apk"
+            cp "$aligned_apk" "release_apks/SHEN-Hero-${RELEASE_VERSION}-${apk_name#app-}.apk"
+          done
+
+      - name: Save signed APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: SHENhero-release-${{ steps.version.outputs.value }}
+          path: release_apks/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.value }}
+          target_commitish: ${{ github.sha }}
+          name: SHEN Hero ${{ steps.version.outputs.value }}
+          body: |
+            APKs signed with the repository's persistent release keystore.
+
+            Install the universal APK if you are unsure which device build to choose.
+          files: release_apks/*.apk
+          fail_on_unmatched_files: true
