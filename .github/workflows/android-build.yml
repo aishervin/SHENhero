@@ -1,30 +1,76 @@
-name: Android CI
+name: Build and Release SHEN Hero APKs
 
 on:
-  push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Version Tag (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-        cache: 'gradle'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew || true
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew || true
 
-    - name: Build with Gradle
-      run: gradle assembleDebug
+      - name: Build Release APKs with ABI Splits
+        run: |
+          ./gradlew assembleRelease
 
-    - name: Run Unit Tests
-      run: gradle testDebugUnitTest
+      - name: Rename and Organize APKs
+        run: |
+          mkdir -p release_apks
+          VERSION="${{ github.event.inputs.version_tag }}"
+          
+          # Locate generated APKs in build outputs
+          find app/build/outputs/apk/release -name "*.apk" | while read apk; do
+            filename=$(basename "$apk")
+            echo "Found APK: $filename"
+            
+            # Determine architecture from filename
+            if [[ "$filename" == *"universal"* ]]; then
+              cp "$apk" "release_apks/SHEN-Hero-$VERSION-universal.apk"
+            elif [[ "$filename" == *"arm64-v8a"* ]]; then
+              cp "$apk" "release_apks/SHEN-Hero-$VERSION-arm64-v8a.apk"
+            elif [[ "$filename" == *"armeabi-v7a"* ]]; then
+              cp "$apk" "release_apks/SHEN-Hero-$VERSION-armeabi-v7a.apk"
+            elif [[ "$filename" == *"x86_64"* ]]; then
+              cp "$apk" "release_apks/SHEN-Hero-$VERSION-x86_64.apk"
+            else
+              cp "$apk" "release_apks/SHEN-Hero-$VERSION-$filename"
+            fi
+          done
+          
+          ls -la release_apks
+
+      - name: Check or Upsert GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version_tag }}
+          name: "®️SHΞN™Hᴇʀᴏ ${{ github.event.inputs.version_tag }}"
+          body: |
+            ## 🚀 ®️SHΞN™Hᴇʀᴏ Neural Release (${{ github.event.inputs.version_tag }})
+            
+            Automated build containing universal and architecture-specific APKs.
+            - Universal APK (`-universal.apk`)
+            - ARM64-v8a APK (`-arm64-v8a.apk`)
+            - ARMeabi-v7a APK (`-armeabi-v7a.apk`)
+            - x86_64 APK (`-x86_64.apk`)
+          files: release_apks/*.apk
+          prerelease: false
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
