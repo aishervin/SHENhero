@@ -70,6 +70,11 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 cp -a "$DIST/." "$OUT/"
 rm -f "$OUT"/*.map "$OUT"/assets/*.map
+if [ -d "$HERE/prebuilt-assets" ]; then
+  say "Adding static assets used by the prebuilt stylesheet and audio cues"
+  mkdir -p "$OUT/assets"
+  (cd "$HERE/prebuilt-assets" && tar cf - .) | (cd "$OUT/assets" && tar xf -)
+fi
 
 say "Packaging $REPO/ui.tar.gz"
 tar czf "$REPO/ui.tar.gz" -C "$OUT" .
