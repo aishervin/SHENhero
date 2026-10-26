@@ -7,29 +7,47 @@ RAW="https://raw.githubusercontent.com/$REPO/main/$BASE"
 
 WEB_DIR="${HOME:+$HOME/.opencode-web}"
 WEB_DIR="${WEB_DIR:-$PREFIX/var/opencode-web}"
-SKIN_DIR="${OC_SKIN_DIR:-$WEB_DIR/skin}"
+UI_DIR="$WEB_DIR/ui"
 
-mkdir -p "$WEB_DIR" "$SKIN_DIR" "$PREFIX/bin"
+mkdir -p "$WEB_DIR" "$UI_DIR" "$PREFIX/bin"
 
 say() { printf '  %s\n' "$*"; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
-say "Downloading skin from $REPO"
-curl -fsSL "$RAW/skin/skin.css" -o "$SKIN_DIR/skin.css.new"
-curl -fsSL "$RAW/skin/skin.js" -o "$SKIN_DIR/skin.js.new"
-curl -fsSL "$RAW/proxy/rtl-proxy.py" -o "$WEB_DIR/rtl-proxy.py.new"
-curl -fsSL "$RAW/bin/opencode-web-open" -o "$PREFIX/bin/opencode-web-open.new"
-curl -fsSL "$RAW/bin/opencode-web-stop" -o "$PREFIX/bin/opencode-web-stop.new"
-curl -fsSL "$RAW/bin/opencode-web-update" -o "$PREFIX/bin/opencode-web-update.new"
+say "Downloading proxy and launchers from $REPO"
+curl -fsSL "$RAW/proxy/rtl-proxy.py" -o "$WEB_DIR/rtl-proxy.py.new" || die "could not download proxy"
+curl -fsSL "$RAW/bin/opencode-web-open" -o "$PREFIX/bin/opencode-web-open.new" || die "could not download launcher"
+curl -fsSL "$RAW/bin/opencode-web-stop" -o "$PREFIX/bin/opencode-web-stop.new" || die "could not download stop script"
+curl -fsSL "$RAW/bin/opencode-web-update" -o "$PREFIX/bin/opencode-web-update.new" || die "could not download updater"
 
-[ -f "$SKIN_DIR/skin.css" ] && cp -f "$SKIN_DIR/skin.css" "$SKIN_DIR/skin.css.bak"
-
-mv -f "$SKIN_DIR/skin.css.new" "$SKIN_DIR/skin.css"
-mv -f "$SKIN_DIR/skin.js.new" "$SKIN_DIR/skin.js"
 mv -f "$WEB_DIR/rtl-proxy.py.new" "$WEB_DIR/rtl-proxy.py"
 mv -f "$PREFIX/bin/opencode-web-open.new" "$PREFIX/bin/opencode-web-open"
 mv -f "$PREFIX/bin/opencode-web-stop.new" "$PREFIX/bin/opencode-web-stop"
 mv -f "$PREFIX/bin/opencode-web-update.new" "$PREFIX/bin/opencode-web-update"
-
 chmod +x "$PREFIX/bin/opencode-web-open" "$PREFIX/bin/opencode-web-stop" "$PREFIX/bin/opencode-web-update" "$WEB_DIR/rtl-proxy.py"
+
+if [ "${OC_UI_SKIP:-0}" = "1" ]; then
+  say "Skipping UI download (OC_UI_SKIP=1)"
+else
+  say "Downloading local UI"
+  TMP="$WEB_DIR/.ui.tar.gz"
+  if curl -fsSL "$RAW/ui.tar.gz" -o "$TMP"; then
+    rm -rf "$WEB_DIR/ui.new" "$WEB_DIR/ui.old"
+    mkdir -p "$WEB_DIR/ui.new"
+    if tar xzf "$TMP" -C "$WEB_DIR/ui.new" && [ -f "$WEB_DIR/ui.new/index.html" ]; then
+      [ -d "$UI_DIR" ] && mv "$UI_DIR" "$WEB_DIR/ui.old" || true
+      mv "$WEB_DIR/ui.new" "$UI_DIR"
+      rm -rf "$WEB_DIR/ui.old"
+      say "Local UI installed in $UI_DIR"
+    else
+      rm -rf "$WEB_DIR/ui.new"
+      die "downloaded UI archive is invalid"
+    fi
+    rm -f "$TMP"
+  else
+    rm -f "$TMP"
+    say "No ui.tar.gz published; the upstream UI will be used"
+  fi
+fi
 
 say "Updated. Restart with: opencode-web-stop && opencode-web-open"

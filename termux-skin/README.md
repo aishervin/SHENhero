@@ -1,17 +1,14 @@
-# SHENhero Termux Skin
+# opencode web UI for Termux
 
-A graphical skin for the **real** opencode web UI on Termux, plus a small local
-proxy that serves it. Every user keeps their own opencode installation, their
-own models, providers, auth and sessions. This repo only changes the look.
+Run the real opencode web UI locally on Android/Termux, then edit its source and
+rebuild it on-device.
 
-- Real opencode web UI (chats, tools, files, terminal, permissions — everything)
-- Local-only proxy on `127.0.0.1` with a random password
-- Injected `skin.css` / `skin.js`, live-editable
-- Farsi/Persian RTL fix built in: auto direction, correct joining, Arabic font
-- One command install, one command to open, one command to update
+This project packages the original `packages/app` UI from opencode v1.19.4. A
+small local proxy serves the UI and forwards `/session`, `/config`, `/event`,
+`/pty` and the rest of the API to your own `opencode serve` process. Nothing is
+sent to a third-party server; the server and proxy bind to `127.0.0.1`.
 
-This folder lives at `termux-skin/` inside the SHENhero repo, next to the
-Android app. Only this folder is needed for the Termux UI.
+The proxy also injects an optional RTL/Arabic text fix.
 
 ## Install
 
@@ -19,114 +16,105 @@ Android app. Only this folder is needed for the Termux UI.
 curl -fsSL https://raw.githubusercontent.com/aishervin/SHENhero/main/termux-skin/install.sh | bash
 ```
 
-If opencode is already installed it is left alone. If it is missing, the
-[opencode-bionic](https://github.com/bd-loser/opencode-bionic) installer runs
-first.
+The installer:
 
-Requirements: Termux on aarch64, and a browser (Chrome or any Android browser).
+- installs `opencode` if it is missing;
+- downloads the proxy, launchers and the prebuilt `ui.tar.gz`;
+- starts `opencode serve --port 0` with a random local password;
+- starts the proxy and opens `http://127.0.0.1:<port>/` in your browser.
 
-## Use
+Requirements: Termux, `curl`, `python`, and opencode. `bun` and `git` are only
+needed when rebuilding the UI.
+
+## Commands
 
 ```bash
-opencode-web-open          # start server + proxy, open the UI
+opencode-web-open          # start the server + UI and open the browser
 opencode-web-open ~/code   # start in a project directory
 opencode-web-stop          # stop both processes
-opencode-web-update        # download the latest skin and proxy
+opencode-web-update        # download the latest proxy, launchers and UI
 ```
 
-The first launch takes a few seconds while the opencode server boots.
+State is kept in `~/.opencode-web/` (`state`, `server.log`, `proxy.log`, `ui/`).
 
-Your normal opencode settings are used:
+## Edit the original UI
 
-```
-~/.config/opencode/          # config, agents, plugins
-~/.local/share/opencode/     # auth, sessions, storage
-```
-
-Nothing in this repo stores API keys, and the proxy only listens on localhost.
-
-## Customize
-
-Open `index.html` (locally or via GitHub Pages). It is a standalone skin studio:
-change colors, radius, font, bubble style, glass and wallpaper, then press
-**Generate skin.css**. Copy the result into:
+The editable source is in `ui-src/`. It was extracted from the v1.19.4 source map
+and keeps the original path layout:
 
 ```
-~/.opencode-web/skin/skin.css
+ui-src/packages/app/src/...
+ui-src/packages/ui/src/...
+ui-src/packages/session-ui/src/...
+ui-src/packages/core/src/...
+ui-src/packages/sdk/js/src/...
+ui-src/packages/schema/src/...
 ```
 
-Reload the browser. To publish for everyone, replace `skin/skin.css` in this
-repo and let users run `opencode-web-update`.
+Build a custom UI:
 
-`skin/skin.js` is optional extra JavaScript. `skin.css` is loaded after the RTL
-base styles, so you can override them.
-
-Useful opencode variables to target:
-
-```
---v2-background-bg-deep        app background
---v2-background-bg-base        panels
---v2-background-bg-layer-01/02 message and card surfaces
---v2-background-bg-accent      accent
---v2-text-text-base            main text
---v2-text-text-muted           secondary text
---v2-text-text-accent          links / accent text
---v2-border-border-base        borders
---v2-border-border-focus       focus ring
---v2-font-family-sans          UI font
---radius-sm/md/lg/xl           corner radius
+```bash
+git clone https://github.com/aishervin/SHENhero
+cd SHENhero/termux-skin
+# edit files under ui-src/packages/
+./ui-src/build.sh
+OC_UI_DIR="$PWD/ui" opencode-web-open
 ```
 
-Container attributes that are safe to style:
+`build.sh` clones `sst/opencode` at the matching tag, overlays `ui-src/packages`,
+installs dependencies, builds `packages/app`, writes `./ui/` and rebuilds
+`ui.tar.gz`.
 
-```
-[data-component="prompt-input-v2"]
-[data-component="dock-prompt"]
-[data-slot="user-message-text"]
-[data-component="markdown"]
-[data-component="markdown-code"]
-```
+Pin a version with `OPENCODE_UI_VERSION=1.19.4`. Use a different work directory
+with `OPENCODE_UI_WORK=/path`. Use `OPENCODE_UI_OUT=/path` for another output.
+
+### Styles
+
+Tailwind v4 uses `lightningcss`, which does not publish an Android arm64 npm
+binding. On Termux the default build therefore uses `ui-src/prebuilt.css` (the
+exact compiled stylesheet from v1.19.4) and skips the Tailwind plugin.
+
+- Put custom CSS in `ui-src/custom.css`; it is appended to the stylesheet.
+- To build CSS from Tailwind sources on a glibc machine, run with
+  `OPENCODE_UI_TAILWIND=1`.
+- Without that, new Tailwind utility classes added to TSX will not be generated.
 
 ## How it works
 
 ```
-browser  ->  127.0.0.1:<proxy port>  ->  127.0.0.1:<opencode port>
-                    |                          |
-             injects skin.css/js         opencode serve
-             adds Basic auth             your config + auth
+browser -> 127.0.0.1:<proxy> -> local UI files
+                            -> opencode serve 127.0.0.1:<random>
 ```
 
-`opencode serve` still serves the original UI and API. The Python proxy
-(`proxy/rtl-proxy.py`) forwards HTTP, SSE and WebSocket traffic, injects the
-skin into the HTML, and adds the server password. Because the UI stays
-same-origin, everything works normally.
+- `opencode serve --port 0` picks a free port and prints it.
+- The proxy adds HTTP Basic auth for the upstream server using the generated
+  `OPENCODE_SERVER_PASSWORD`, forwards SSE and WebSockets, and injects the RTL
+  script into HTML responses.
+- If `OC_UI_DIR/index.html` exists, the proxy serves that UI and uses it as the
+  SPA fallback. Otherwise it uses the UI shipped with the installed opencode.
 
-This is why a static HTML page cannot replace the whole UI: the real app needs
-the local API, SSE and WebSocket. The HTML file here is the design studio and
-landing page; the full UI remains opencode's own.
+## Environment
 
-## Use your own fork
-
-1. Fork or create a repo with this `termux-skin/` folder.
-2. Edit `termux-skin/skin/skin.css` and `termux-skin/index.html`.
-3. Users run:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/<you>/<repo>/main/termux-skin/install.sh | OC_SKIN_REPO=<you>/<repo> bash
-```
-
-or edit the default in `install.sh`, `bin/opencode-web-update` and the install
-command in `index.html`.
+| Variable | Meaning |
+| --- | --- |
+| `OC_UI_DIR` | UI directory to serve (default `~/.opencode-web/ui`) |
+| `OC_UI_SKIP=1` | Keep the current UI during `opencode-web-update` |
+| `OPENCODE_WEB_PORT` | Fixed proxy port (default: random) |
+| `OPENCODE_WEB_NO_OPEN=1` | Do not launch a browser |
+| `OPENCODE_SERVER_PASSWORD` | Reuse a specific server password |
+| `OC_SKIN_REPO` | GitHub repo for updates (default `aishervin/SHENhero`) |
+| `OC_SKIN_BASE` | Subdirectory in that repo (default `termux-skin`) |
 
 ## Security
 
-- Proxy listens on `127.0.0.1` only.
-- A random `OPENCODE_SERVER_PASSWORD` is generated per launch unless you set
-  one. The browser connects to the proxy; the proxy authenticates upstream.
-- Do not expose the proxy port to your network. Do not remove the localhost
-  bind.
+- The proxy listens on `127.0.0.1` only.
+- The opencode server uses a random password per launch, passed to the proxy
+  through the environment.
+- Do not expose the proxy port through a reverse tunnel without adding your own
+  authentication.
 
-## License
+## Source and license
 
-MIT for the skin, studio, proxy and launchers in this folder. opencode itself
-is licensed by its authors and is installed separately.
+The UI source comes from the opencode v1.19.4 build (`packages/app` and its
+workspace packages). opencode is MIT licensed. This repository is an independent
+Termux packaging and is not affiliated with the opencode project.

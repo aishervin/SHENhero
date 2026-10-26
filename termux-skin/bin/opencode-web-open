@@ -4,13 +4,13 @@ set -euo pipefail
 WEB_DIR="${HOME:+$HOME/.opencode-web}"
 WEB_DIR="${WEB_DIR:-$PREFIX/var/opencode-web}"
 PROXY="$WEB_DIR/rtl-proxy.py"
-SKIN_DIR="${OC_SKIN_DIR:-$WEB_DIR/skin}"
+UI_DIR="${OC_UI_DIR:-$WEB_DIR/ui}"
 SERVER_LOG="$WEB_DIR/server.log"
 PROXY_LOG="$WEB_DIR/proxy.log"
 STATE="$WEB_DIR/state"
 
-mkdir -p "$WEB_DIR" "$SKIN_DIR"
-export OC_SKIN_DIR="$SKIN_DIR"
+mkdir -p "$WEB_DIR" "$UI_DIR"
+export OC_UI_DIR="$UI_DIR"
 
 open_url() {
   if command -v termux-open-url >/dev/null 2>&1; then
@@ -84,7 +84,7 @@ fi
 : > "$PROXY_LOG"
 OC_UPSTREAM_PORT="$UP" \
 OC_PROXY_PORT="${OPENCODE_WEB_PORT:-0}" \
-OC_SKIN_DIR="$SKIN_DIR" \
+OC_UI_DIR="$UI_DIR" \
 OPENCODE_SERVER_PASSWORD="$OPENCODE_SERVER_PASSWORD" \
 nohup python3 "$PROXY" >"$PROXY_LOG" 2>&1 &
 PROXY_PID=$!
@@ -117,5 +117,10 @@ OC_UPSTREAM_PORT=$UP
 OC_PROXY_URL=$OC_PROXY_URL
 EOF
 
-printf 'opencode web (skin + RTL): %s\n' "$OC_PROXY_URL"
+if [ -f "$UI_DIR/index.html" ]; then
+  printf 'opencode web (local UI + RTL): %s\n' "$OC_PROXY_URL"
+else
+  printf 'opencode web (upstream UI + RTL): %s\n' "$OC_PROXY_URL"
+  printf 'No local UI found in %s; run ui-src/build.sh to build one.\n' "$UI_DIR"
+fi
 [ "${OPENCODE_WEB_NO_OPEN:-0}" = "1" ] || open_url "$OC_PROXY_URL"

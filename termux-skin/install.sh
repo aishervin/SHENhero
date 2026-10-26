@@ -14,9 +14,9 @@ if [ -z "${PREFIX:-}" ] || [ ! -d "$PREFIX" ]; then
   exit 1
 fi
 
-if ! command -v curl >/dev/null 2>&1; then
-  say "Installing curl"
-  pkg install -y curl >/dev/null
+if ! command -v curl >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
+  say "Installing curl and python"
+  pkg install -y curl python >/dev/null
 fi
 
 if ! command -v opencode >/dev/null 2>&1; then
@@ -24,11 +24,11 @@ if ! command -v opencode >/dev/null 2>&1; then
   curl -fsSL https://raw.githubusercontent.com/bd-loser/opencode-bionic/main/install.sh | bash
 fi
 
-grn "Installing the opencode skin launcher"
+grn "Installing the opencode web UI launcher"
 mkdir -p "$PREFIX/bin" "${HOME:-$PREFIX}/.opencode-web"
 curl -fsSL "$RAW/bin/opencode-web-update" -o "$PREFIX/bin/opencode-web-update"
 chmod +x "$PREFIX/bin/opencode-web-update"
 "$PREFIX/bin/opencode-web-update"
 
-grn "Ready. Full functionality runs on your local opencode server."
+grn "Ready. The UI and API stay on 127.0.0.1 and use your local opencode server."
 exec "$PREFIX/bin/opencode-web-open" "$@"

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import asyncio
 import base64
+import mimetypes
 import os
 import sys
+import urllib.parse
 
 LISTEN_HOST = os.environ.get("OC_PROXY_HOST", "127.0.0.1")
 LISTEN_PORT = int(os.environ.get("OC_PROXY_PORT", "0"))
@@ -10,7 +12,7 @@ UP_HOST = os.environ.get("OC_UPSTREAM_HOST", "127.0.0.1")
 UP_PORT = int(os.environ.get("OC_UPSTREAM_PORT", "4096"))
 USER = os.environ.get("OPENCODE_SERVER_USERNAME", "opencode")
 PW = os.environ.get("OPENCODE_SERVER_PASSWORD", "")
-SKIN_DIR = os.environ.get("OC_SKIN_DIR") or os.path.expanduser("~/.opencode-web/skin")
+UI_DIR = os.environ.get("OC_UI_DIR", "")
 AUTH = None
 if PW:
     AUTH = "Basic " + base64.b64encode((USER + ":" + PW).encode()).decode()
@@ -116,17 +118,28 @@ FIX_JS = r"""
 })();
 """
 
-INJECT = (
-    '<style id="oc-rtl-style">' + FIX_CSS + '</style>'
-    '<link rel="stylesheet" href="/__oc_skin.css">'
-    '<script src="/__oc_rtl_fix.js"></script>'
-    '<script src="/__oc_skin.js"></script>'
-)
+INJECT = '<style id="oc-rtl-style">' + FIX_CSS + '</style><script src="/__oc_rtl_fix.js"></script>'
 FIX_BYTES = (FIX_JS + "\n").encode()
-SKIN_FILES = {
-    b"/__oc_skin.css": ("skin.css", b"text/css; charset=utf-8"),
-    b"/__oc_skin.js": ("skin.js", b"application/javascript; charset=utf-8"),
-}
+
+for ext, ctype in [
+    (".js", "text/javascript; charset=utf-8"),
+    (".mjs", "text/javascript; charset=utf-8"),
+    (".css", "text/css; charset=utf-8"),
+    (".woff2", "font/woff2"),
+    (".woff", "font/woff"),
+    (".ttf", "font/ttf"),
+    (".svg", "image/svg+xml"),
+    (".png", "image/png"),
+    (".ico", "image/x-icon"),
+    (".mp4", "video/mp4"),
+    (".webmanifest", "application/manifest+json"),
+    (".json", "application/json"),
+    (".wasm", "application/wasm"),
+]:
+    mimetypes.add_type(ctype.split(";")[0], ext)
+
+UI_ROOT = os.path.realpath(UI_DIR) if UI_DIR else ""
+HAS_UI = bool(UI_ROOT) and os.path.isfile(os.path.join(UI_ROOT, "index.html"))
 
 
 def hget(headers, name):
@@ -172,8 +185,7 @@ def build_request(start, headers, websocket):
         out.append((b"authorization", AUTH.encode()))
     if not websocket:
         out.append((b"connection", b"close"))
-    head = start + b"\r\n" + b"\r\n".join(k + b": " + v for k, v in out) + b"\r\n\r\n"
-    return head
+    return start + b"\r\n" + b"\r\n".join(k + b": " + v for k, v in out) + b"\r\n\r\n"
 
 
 def build_response(start, headers, length=None):
@@ -192,6 +204,55 @@ def build_response(start, headers, length=None):
         out.append((b"content-length", str(length).encode()))
     out.append((b"connection", b"close"))
     return start + b"\r\n" + b"\r\n".join(k + b": " + v for k, v in out) + b"\r\n\r\n"
+
+
+def inject_html(data):
+    text = data.decode("utf-8", "replace")
+    if "</head>" in text:
+        text = text.replace("</head>", INJECT + "</head>", 1)
+    else:
+        text = INJECT + text
+    return text.encode()
+
+
+def ui_file(path):
+    if not HAS_UI:
+        return None
+    try:
+        clean = urllib.parse.unquote(path.split("?")[0])
+    except Exception:
+        return None
+    if clean == "/":
+        clean = "/index.html"
+    full = os.path.realpath(os.path.join(UI_ROOT, clean.lstrip("/")))
+    if full != UI_ROOT and not full.startswith(UI_ROOT + os.sep):
+        return None
+    if not os.path.isfile(full):
+        return None
+    return full
+
+
+async def send_bytes(writer, method, path, full, data):
+    ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
+    if full.endswith("index.html"):
+        data = inject_html(data)
+        ctype = "text/html; charset=utf-8"
+        cache = "no-store"
+    elif path.startswith("/assets/"):
+        cache = "public, max-age=31536000, immutable"
+    else:
+        cache = "no-store"
+    head = (
+        b"HTTP/1.1 200 OK\r\n"
+        b"Content-Type: " + ctype.encode() + b"\r\n"
+        b"Cache-Control: " + cache.encode() + b"\r\n"
+        b"Content-Length: " + str(len(data)).encode() + b"\r\n"
+        b"Connection: close\r\n\r\n"
+    )
+    writer.write(head)
+    if method != b"HEAD":
+        writer.write(data)
+    await writer.drain()
 
 
 async def read_head(reader):
@@ -229,6 +290,29 @@ async def dechunk(reader, initial):
             buf += chunk
         out += buf[:size]
         buf = buf[size + 2 :]
+
+
+async def stream_all(reader, rest, headers):
+    cl = hget(headers, b"content-length")
+    if cl is not None:
+        try:
+            n = int(cl)
+        except ValueError:
+            n = None
+        data = bytearray(rest)
+        if n is not None:
+            while len(data) < n:
+                chunk = await reader.read(65536)
+                if not chunk:
+                    break
+                data += chunk
+            return bytes(data[:n])
+    data = bytearray(rest)
+    while True:
+        chunk = await reader.read(65536)
+        if not chunk:
+            return bytes(data)
+        data += chunk
 
 
 async def stream_body(reader, writer, rest, headers):
@@ -346,38 +430,34 @@ async def handle(client_reader, client_writer):
         if not head:
             return
         start, headers = parse_head(head)
+        parts = start.split(b" ")
+        method = parts[0] if parts else b"GET"
+        path = parts[1] if len(parts) > 1 else b"/"
+        clean_path = path.split(b"?")[0]
         upgrade = hget(headers, b"upgrade") or b""
         websocket = b"websocket" in upgrade.lower()
 
-        try:
-            path = start.split(b" ")[1]
-        except IndexError:
-            path = b"/"
-
-        skin = SKIN_FILES.get(path.split(b"?")[0])
-        if skin is not None:
-            name, ctype = skin
-            try:
-                with open(os.path.join(SKIN_DIR, name), "rb") as fh:
-                    data = fh.read()
-            except OSError:
-                data = b""
-            if start.startswith(b"HEAD"):
-                client_writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: " + ctype + b"\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n")
-            else:
-                client_writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: " + ctype + b"\r\nCache-Control: no-store\r\nContent-Length: " + str(len(data)).encode() + b"\r\nConnection: close\r\n\r\n")
-                client_writer.write(data)
-            await client_writer.drain()
-            return
-
-        if path.split(b"?")[0] == b"/__oc_rtl_fix.js":
-            if start.startswith(b"HEAD"):
+        if clean_path == b"/__oc_rtl_fix.js":
+            if method == b"HEAD":
                 client_writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/javascript; charset=utf-8\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
             else:
                 client_writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/javascript; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: " + str(len(FIX_BYTES)).encode() + b"\r\nConnection: close\r\n\r\n")
                 client_writer.write(FIX_BYTES)
             await client_writer.drain()
             return
+
+        if HAS_UI:
+            spath = path.decode("latin-1")
+            full = ui_file(spath)
+            if full is None:
+                accept = (hget(headers, b"accept") or b"").lower()
+                if method in (b"GET", b"HEAD") and b"text/html" in accept:
+                    full = os.path.join(UI_ROOT, "index.html")
+            if full is not None:
+                with open(full, "rb") as fh:
+                    data = fh.read()
+                await send_bytes(client_writer, method, spath, full, data)
+                return
 
         up_reader, up_writer = await asyncio.open_connection(UP_HOST, UP_PORT)
         req = build_request(start, headers, websocket)
@@ -403,12 +483,9 @@ async def handle(client_reader, client_writer):
         inject = ctype.startswith(b"text/html")
 
         if inject:
-            body = await dechunk(up_reader, resp_rest) if b"chunked" in (hget(resp_headers, b"transfer-encoding") or b"").lower() else await stream_all(up_reader, resp_rest, resp_headers)
-            marker = b"</head>"
-            if marker in body:
-                body = body.replace(marker, INJECT.encode() + marker, 1)
-            else:
-                body = INJECT.encode() + body
+            te = (hget(resp_headers, b"transfer-encoding") or b"").lower()
+            body = await dechunk(up_reader, resp_rest) if b"chunked" in te else await stream_all(up_reader, resp_rest, resp_headers)
+            body = inject_html(body)
             client_writer.write(build_response(status, resp_headers, len(body)))
             client_writer.write(body)
             await client_writer.drain()
@@ -428,29 +505,6 @@ async def handle(client_reader, client_writer):
             client_writer.close()
         except Exception:
             pass
-
-
-async def stream_all(reader, rest, headers):
-    cl = hget(headers, b"content-length")
-    if cl is not None:
-        try:
-            n = int(cl)
-        except ValueError:
-            n = None
-        data = bytearray(rest)
-        if n is not None:
-            while len(data) < n:
-                chunk = await reader.read(65536)
-                if not chunk:
-                    break
-                data += chunk
-            return bytes(data[:n])
-    data = bytearray(rest)
-    while True:
-        chunk = await reader.read(65536)
-        if not chunk:
-            return bytes(data)
-        data += chunk
 
 
 async def main():
