@@ -67,7 +67,10 @@ export function LegacyHome() {
 
   return (
     <div class="mx-auto mt-55 w-full md:w-auto px-4">
-      <Logo class="md:w-xl opacity-12" />
+      <div class="flex flex-col items-center">
+        <Logo class="md:w-xl opacity-12" />
+        <p class="mt-2 text-center text-[13px] font-semibold tracking-wide text-[#ff861f]">SHΞN ʜᴇʀᴏ™ Termux Agent Coder</p>
+      </div>
       <Button
         size="large"
         variant="ghost"
