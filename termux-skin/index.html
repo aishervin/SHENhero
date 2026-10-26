@@ -3,100 +3,57 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>opencode web UI for Termux</title>
+    <meta name="theme-color" content="#09090b" />
+    <title>SHΞN ʜᴇʀᴏ™ Termux Agent Coder</title>
+    <meta name="description" content="A private, local-first coding workspace for Android and Termux." />
     <style>
-      :root {
-        color-scheme: light dark;
-        --bg: #fafafa;
-        --fg: #18181b;
-        --muted: #52525b;
-        --line: #e4e4e7;
-        --code: #f4f4f5;
-        --accent: #2563eb;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #09090b;
-          --fg: #fafafa;
-          --muted: #a1a1aa;
-          --line: #27272a;
-          --code: #18181b;
-          --accent: #60a5fa;
-        }
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--fg);
-        font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-      }
-      main { max-width: 760px; margin: 0 auto; padding: 56px 20px 80px; }
-      h1 { font-size: clamp(28px, 6vw, 44px); line-height: 1.15; margin: 0 0 12px; letter-spacing: -0.02em; }
-      h2 { font-size: 20px; margin: 40px 0 12px; }
-      p, li { color: var(--muted); }
-      a { color: var(--accent); }
-      code, pre {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        font-size: 14px;
-      }
-      code { background: var(--code); border-radius: 5px; padding: 2px 5px; }
-      pre {
-        background: var(--code);
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 16px;
-        overflow-x: auto;
-        color: var(--fg);
-      }
-      pre code { background: none; padding: 0; }
-      ul { padding-left: 22px; }
-      .lead { font-size: 18px; }
-      .rule { height: 1px; background: var(--line); margin: 36px 0; border: 0; }
-      .meta { font-size: 14px; color: var(--muted); }
+      :root{color-scheme:dark;--bg:#09090b;--fg:#fafafa;--muted:#a1a1aa;--line:#27272a;--code:#18181b;--accent:#ff861f}
+      *{box-sizing:border-box}
+      body{margin:0;background:radial-gradient(ellipse at top,#1b1510 0%,var(--bg) 48%);color:var(--fg);font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+      main{max-width:780px;margin:0 auto;padding:clamp(32px,8vw,72px) 20px 64px}
+      .brand{font-size:clamp(30px,7vw,54px);line-height:1.1;letter-spacing:-.04em;font-weight:800;margin:0}
+      .brand span{display:block;color:var(--accent);font-size:clamp(15px,3.5vw,21px);letter-spacing:.01em;margin-top:14px;font-weight:700}
+      .lead{font-size:18px;color:#d4d4d8;margin:30px 0}
+      h2{font-size:20px;margin:38px 0 12px}
+      p,li{color:var(--muted)}
+      a{color:var(--accent)}
+      code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px}
+      pre{background:var(--code);border:1px solid var(--line);border-radius:12px;padding:16px;overflow-x:auto;color:var(--fg)}
+      pre code{white-space:pre}
+      .pill{display:inline-block;border:1px solid #70401e;color:#ffb36d;padding:4px 10px;border-radius:999px;font-size:12px;letter-spacing:.08em}
+      .rule{height:1px;background:var(--line);margin:36px 0;border:0}
+      .meta{font-size:13px}
     </style>
   </head>
   <body>
     <main>
-      <h1>opencode web UI for Termux</h1>
-      <p class="lead">
-        Run the real opencode web UI locally on Android, with editable source and
-        your own opencode server.
-      </p>
+      <p class="pill">ANDROID · TERMUX · LOCAL-FIRST</p>
+      <h1 class="brand">SHΞN ʜᴇʀᴏ™<span>Termux Agent Coder</span></h1>
+      <p class="lead">Your coding workspace, running locally on Android. Keep the familiar coding UI and workflows, with the service and proxy bound to your own device.</p>
 
       <h2>Install</h2>
       <pre><code>curl -fsSL https://raw.githubusercontent.com/aishervin/SHENhero/main/termux-skin/install.sh | bash</code></pre>
-      <p>
-        The installer downloads the proxy, launchers and prebuilt UI, starts a
-        local <code>opencode serve</code> process with a random password, and
-        opens <code>127.0.0.1</code> in your browser.
-      </p>
+      <p>The installer prepares the local launcher and prebuilt UI, starts the local coding service, and opens the workspace in your browser. The local UI/API does not require a SHΞN ʜᴇʀᴏ™ hosted backend.</p>
 
       <h2>Commands</h2>
       <pre><code>opencode-web-open
+opencode-web-open ~/code
 opencode-web-stop
 opencode-web-update</code></pre>
 
-      <h2>Edit the UI</h2>
-      <p>
-        The original UI source is vendored under <code>ui-src/</code>. Clone the
-        repository, edit <code>ui-src/packages/...</code>, then build:
-      </p>
+      <h2>Connect an Android app</h2>
+      <p>When the local server is running, compatible apps can connect to the configured loopback endpoint:</p>
+      <pre><code>http://127.0.0.1:4096</code></pre>
+
+      <h2>Customize the UI</h2>
+      <p>Editable UI sources and build instructions are included in this repository.</p>
       <pre><code>git clone https://github.com/aishervin/SHENhero
 cd SHENhero/termux-skin
-./ui-src/build.sh
-OC_UI_DIR="$PWD/ui" opencode-web-open</code></pre>
-      <p>
-        The build targets opencode v1.19.4, overlays the vendored source onto the
-        matching upstream tag, and builds <code>packages/app</code>.
-      </p>
+./ui-src/build.sh</code></pre>
 
       <hr class="rule" />
-      <p class="meta">
-        <a href="https://github.com/aishervin/SHENhero/tree/main/termux-skin">Source and documentation</a>
-        · <a href="https://github.com/sst/opencode">opencode</a>
-        · MIT licensed. Not affiliated with the opencode project.
-      </p>
+      <p class="meta"><a href="https://github.com/aishervin/SHENhero">SHΞN ʜᴇʀᴏ™ source code</a> · <a href="https://github.com/aishervin/SHENhero/issues">Report an issue</a></p>
+      <p class="meta">Independent customization for Termux. Upstream third-party notices and license terms remain applicable.</p>
     </main>
   </body>
 </html>
