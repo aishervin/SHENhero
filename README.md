@@ -1,49 +1,69 @@
-# SHEN Hero
+# SHENhero
 
-SHEN Hero is an Android assistant built with Kotlin and Jetpack Compose. The current release scope is Gemini 3.8 Flash chat with recent-turn context, optional Google Search grounding, image questions, and speech-to-text dictation.
+Local-first tools for Android and Termux.
 
-## Requirements
+## opencode web UI for Termux
 
-- Android Studio with JDK 17
-- Android SDK Platform 36, including extension level 1
-- A Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+Run the real opencode web UI on Android, served from your own local opencode
+server. The UI is built from the original opencode v1.19.4 `packages/app` source,
+with editable source vendored in this repository and an optional RTL fix.
 
-On macOS or Linux, run `chmod +x gradlew` once if the executable bit was not preserved when downloading the source. Then open the project in Android Studio, let the checked-in Gradle 9.3.1 wrapper sync, install the app on an Android 7.0 (API 24) or newer device, and enter your key in Settings. On Windows, use `gradlew.bat`. The app asks for microphone access only when you tap the microphone. Speech recognition is provided by the Android device's installed recognition service.
+The proxy binds to `127.0.0.1`, starts `opencode serve` with a random per-launch
+password, and forwards the API, SSE events and WebSockets. No hosted backend or
+third-party account is involved.
 
-## Included features
+### Install
 
-- Gemini chat with the latest 20 saved turns as context
-- Optional Google Search grounding, enabled with the search button beside the message field
-- Image understanding; images are resized on-device before upload
-- Voice dictation into the message field; the user reviews and sends the recognized text. Audio is handled by the device's speech-recognition service and may be processed according to that provider's terms.
-- Encrypted local storage for the Gemini key and chat text using an Android Keystore AES-GCM key
-- Local chat database is excluded from Android backup
+```bash
+curl -fsSL https://raw.githubusercontent.com/aishervin/SHENhero/main/termux-skin/install.sh | bash
+```
 
-The other-provider keys, maps, autonomous actions, and speech-to-speech mode from the early prototype are not presented as working integrations. They need separate implementations and, for sensitive multi-user integrations, a backend.
+Requirements: Termux, `curl`, `python`, and opencode. The installer adds
+opencode if it is missing, downloads the proxy and prebuilt UI, then opens the
+local URL in your browser.
 
-## API key and privacy
+### Commands
 
-Each installation supplies its own Gemini key. The key is encrypted at rest and sent in the HTTPS `x-goog-api-key` header; it is not compiled into the APK or written to logs. The app sends the current prompt and recent conversation turns to Google's Gemini API. Search mode also enables Google Search grounding. Image mode sends a resized JPEG to Gemini. Do not send sensitive data unless you are comfortable with the provider processing it.
+```bash
+opencode-web-open          # start the server and UI
+opencode-web-open ~/code   # start in a project directory
+opencode-web-stop          # stop both processes
+opencode-web-update        # update the proxy, launchers and UI
+```
 
-Device-side encryption protects data at rest, but it cannot make a client API key impossible to extract from a compromised or instrumented device. For a public service that pays for all users, put model calls behind an authenticated, rate-limited backend and never distribute a shared server key in the app.
+### Edit the UI
 
-`PRIVACY.md` is a draft notice matching the current app behavior. The publisher must review it, add contact details, publish it at a stable public URL, and align the store's Data safety form before release.
+```bash
+git clone https://github.com/aishervin/SHENhero
+cd SHENhero/termux-skin
+# edit ui-src/packages/...
+./ui-src/build.sh
+OC_UI_DIR="$PWD/ui" opencode-web-open
+```
 
-## Checks and debug APKs
+The build clones `sst/opencode` at the matching tag, overlays the vendored source,
+and builds `packages/app` on-device.
 
-The `Android build and release` GitHub Actions workflow runs `testDebugUnitTest` and builds debug APKs on pushes to `main`, pull requests, and manual runs. Successful runs publish the debug APKs as a downloadable workflow artifact.
+Termux uses the prebuilt stylesheet because Tailwind's `lightningcss` dependency
+has no Android arm64 npm binding. Add style overrides in `ui-src/custom.css`, or
+run a full Tailwind build on a glibc machine with `OPENCODE_UI_TAILWIND=1`.
 
-## Signed releases
+### Layout
 
-Create one upload keystore and keep a secure backup outside the repository. Do not commit the keystore or its passwords. Configure these repository Actions secrets before publishing:
+```
+termux-skin/
+  install.sh          installer
+  bin/                launchers and updater
+  proxy/              local UI/API proxy with RTL fix
+  ui-src/             original UI source and build script
+  ui.tar.gz           prebuilt UI served by the proxy
+  index.html          project landing page
+```
 
-For example, create a keystore locally with `keytool -genkeypair -v -keystore shenhero-upload.jks -alias shenhero -keyalg RSA -keysize 3072 -validity 10000`, then securely Base64-encode that file for the repository secret. Keep the original keystore and passwords backed up separately.
+See [termux-skin/README.md](termux-skin/README.md) for configuration, security
+notes and build details.
 
-- `ANDROID_KEYSTORE_BASE64`: Base64-encoded keystore file
-- `ANDROID_KEYSTORE_PASSWORD`: keystore password
-- `ANDROID_KEY_ALIAS`: alias inside the keystore
-- `ANDROID_KEY_PASSWORD`: key password
+## License
 
-Push a version tag such as `v1.0.0`, or run the workflow manually and provide `version_tag`. The release job only runs after tests and the debug build pass. It signs and uploads universal and architecture-specific APKs to a GitHub Release. Keep using the same keystore for future releases so users can install updates over the previous version.
-
-The Gradle wrapper verifies the Gradle 9.3.1 distribution checksum before using it.
+MIT. opencode is a separate MIT-licensed project; this repository is an
+independent packaging and is not affiliated with it.
