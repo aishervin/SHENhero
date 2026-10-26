@@ -1,0 +1,121 @@
+#!/data/data/com.termux/files/usr/bin/env bash
+set -euo pipefail
+
+WEB_DIR="${HOME:+$HOME/.opencode-web}"
+WEB_DIR="${WEB_DIR:-$PREFIX/var/opencode-web}"
+PROXY="$WEB_DIR/rtl-proxy.py"
+SKIN_DIR="${OC_SKIN_DIR:-$WEB_DIR/skin}"
+SERVER_LOG="$WEB_DIR/server.log"
+PROXY_LOG="$WEB_DIR/proxy.log"
+STATE="$WEB_DIR/state"
+
+mkdir -p "$WEB_DIR" "$SKIN_DIR"
+export OC_SKIN_DIR="$SKIN_DIR"
+
+open_url() {
+  if command -v termux-open-url >/dev/null 2>&1; then
+    termux-open-url "$1" >/dev/null 2>&1 || true
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$1" >/dev/null 2>&1 || true
+  else
+    printf 'Open this URL in your browser: %s\n' "$1"
+  fi
+}
+
+if [ -f "$STATE" ]; then
+  # shellcheck disable=SC1090
+  . "$STATE" 2>/dev/null || true
+  if [ -n "${OC_PROXY_URL:-}" ] && curl -fsS --max-time 2 -o /dev/null "$OC_PROXY_URL" 2>/dev/null; then
+    printf 'opencode web already running: %s\n' "$OC_PROXY_URL"
+    [ "${OPENCODE_WEB_NO_OPEN:-0}" = "1" ] || open_url "$OC_PROXY_URL"
+    exit 0
+  fi
+  rm -f "$STATE"
+fi
+
+if [ ! -f "$PROXY" ]; then
+  printf 'Missing %s\n' "$PROXY" >&2
+  exit 1
+fi
+
+if [ -n "${1:-}" ] && [ -d "$1" ]; then
+  cd "$1"
+fi
+
+if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ]; then
+  OPENCODE_SERVER_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
+fi
+export OPENCODE_SERVER_PASSWORD
+
+: > "$SERVER_LOG"
+nohup opencode serve --port 0 >"$SERVER_LOG" 2>&1 &
+SERVE_PID=$!
+disown "$SERVE_PID" 2>/dev/null || true
+
+UP=""
+for _ in $(seq 1 240); do
+  UP="$(grep -oE 'http://127\.0\.0\.1:[0-9]+' "$SERVER_LOG" 2>/dev/null | head -n1 | grep -oE '[0-9]+$' || true)"
+  [ -n "$UP" ] && break
+  if ! kill -0 "$SERVE_PID" 2>/dev/null; then
+    printf 'opencode server exited during startup:\n' >&2
+    tail -n 20 "$SERVER_LOG" >&2 || true
+    exit 1
+  fi
+  sleep 0.25
+done
+
+if [ -z "$UP" ]; then
+  printf 'Timed out waiting for the opencode server. See %s\n' "$SERVER_LOG" >&2
+  exit 1
+fi
+
+READY=0
+for _ in $(seq 1 240); do
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 -u "opencode:$OPENCODE_SERVER_PASSWORD" "http://127.0.0.1:$UP/" 2>/dev/null || true)"
+  if [ "$code" = "200" ]; then READY=1; break; fi
+  sleep 0.25
+done
+if [ "$READY" != "1" ]; then
+  printf 'opencode server did not become ready. See %s\n' "$SERVER_LOG" >&2
+  kill "$SERVE_PID" 2>/dev/null || true
+  exit 1
+fi
+
+: > "$PROXY_LOG"
+OC_UPSTREAM_PORT="$UP" \
+OC_PROXY_PORT="${OPENCODE_WEB_PORT:-0}" \
+OC_SKIN_DIR="$SKIN_DIR" \
+OPENCODE_SERVER_PASSWORD="$OPENCODE_SERVER_PASSWORD" \
+nohup python3 "$PROXY" >"$PROXY_LOG" 2>&1 &
+PROXY_PID=$!
+disown "$PROXY_PID" 2>/dev/null || true
+
+PP=""
+for _ in $(seq 1 60); do
+  PP="$(grep -oE '^[0-9]+$' "$PROXY_LOG" 2>/dev/null | head -n1 || true)"
+  [ -n "$PP" ] && break
+  if ! kill -0 "$PROXY_PID" 2>/dev/null; then
+    printf 'RTL proxy exited during startup:\n' >&2
+    tail -n 20 "$PROXY_LOG" >&2 || true
+    kill "$SERVE_PID" 2>/dev/null || true
+    exit 1
+  fi
+  sleep 0.25
+done
+
+if [ -z "$PP" ]; then
+  printf 'Timed out waiting for the RTL proxy. See %s\n' "$PROXY_LOG" >&2
+  kill "$SERVE_PID" 2>/dev/null || true
+  exit 1
+fi
+
+OC_PROXY_URL="http://127.0.0.1:$PP/"
+cat > "$STATE" <<EOF
+OC_SERVE_PID=$SERVE_PID
+OC_PROXY_PID=$PROXY_PID
+OC_UPSTREAM_PORT=$UP
+OC_PROXY_URL=$OC_PROXY_URL
+EOF
+
+printf 'opencode web (skin + RTL): %s\n' "$OC_PROXY_URL"
+[ "${OPENCODE_WEB_NO_OPEN:-0}" = "1" ] || open_url "$OC_PROXY_URL"

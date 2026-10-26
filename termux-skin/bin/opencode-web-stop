@@ -1,0 +1,19 @@
+#!/data/data/com.termux/files/usr/bin/env bash
+set -euo pipefail
+
+WEB_DIR="${HOME:+$HOME/.opencode-web}"
+WEB_DIR="${WEB_DIR:-$PREFIX/var/opencode-web}"
+STATE="$WEB_DIR/state"
+
+if [ ! -f "$STATE" ]; then
+  echo "opencode web is not running (no state file)"
+  exit 0
+fi
+
+# shellcheck disable=SC1090
+. "$STATE" 2>/dev/null || true
+
+[ -n "${OC_PROXY_PID:-}" ] && kill "$OC_PROXY_PID" 2>/dev/null || true
+[ -n "${OC_SERVE_PID:-}" ] && kill "$OC_SERVE_PID" 2>/dev/null || true
+rm -f "$STATE"
+echo "opencode web stopped"

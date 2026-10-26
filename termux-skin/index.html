@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenCode Skin Studio</title>
+<meta name="description" content="Design a graphical skin for the opencode web UI on Termux. Export skin.css, publish it, and the launcher injects it into the real opencode interface.">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #07080d;
+    --panel: #10131d;
+    --panel-2: #161a27;
+    --text: #eef1fb;
+    --muted: #9aa3bd;
+    --border: #242a3c;
+    --accent: #818cf8;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans Arabic", sans-serif;
+    background:
+      radial-gradient(900px 520px at 8% -12%, rgba(99,102,241,.22), transparent 65%),
+      radial-gradient(800px 520px at 96% 2%, rgba(34,211,238,.12), transparent 65%),
+      var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  a { color: var(--accent); }
+  header.top {
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between;
+    padding: 22px clamp(16px, 4vw, 44px) 10px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 38px; height: 38px; border-radius: 12px;
+    background: linear-gradient(135deg, #818cf8, #22d3ee 60%, #f472b6);
+    box-shadow: 0 8px 30px rgba(129,140,248,.45);
+    display: grid; place-items: center; font-weight: 800; color: #06070d; font-size: 18px;
+  }
+  h1 { font-size: clamp(18px, 2.4vw, 24px); margin: 0; letter-spacing: -.02em; }
+  .brand small { display: block; color: var(--muted); font-weight: 500; font-size: 12px; margin-top: 2px; }
+  .actions-top { display: flex; gap: 8px; flex-wrap: wrap; }
+  button, .btn {
+    font: inherit; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    padding: 9px 14px; border-radius: 10px; cursor: pointer; text-decoration: none;
+    transition: background .15s ease, border-color .15s ease, transform .05s ease;
+  }
+  button:hover, .btn:hover { border-color: #3a4260; background: var(--panel-2); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #06070d; }
+  button.primary:hover { background: #a5b4fc; }
+  main.layout {
+    display: grid; gap: 18px; padding: 12px clamp(16px, 4vw, 44px) 8px;
+    grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr);
+    align-items: start;
+  }
+  @media (max-width: 980px) { main.layout { grid-template-columns: 1fr; } }
+  .stage {
+    border: 1px solid var(--border); border-radius: 22px; background: var(--panel);
+    padding: 20px; min-height: 520px; display: grid; place-items: center;
+    background-image: radial-gradient(600px 300px at 50% 0%, rgba(129,140,248,.10), transparent 70%);
+  }
+  .device {
+    width: min(100%, 640px); border-radius: 22px; padding: 10px;
+    background: linear-gradient(180deg, #1b2030, #0c0f17);
+    border: 1px solid #2b3248; box-shadow: 0 34px 80px rgba(0,0,0,.55);
+  }
+  .app {
+    display: grid; grid-template-columns: 132px minmax(0, 1fr);
+    min-height: 440px; border-radius: 14px; overflow: hidden;
+    background: var(--pv-bg-deep); color: var(--pv-text);
+    font-family: var(--pv-font); font-size: var(--pv-size);
+    border: 1px solid var(--pv-border);
+  }
+  @media (max-width: 560px) { .app { grid-template-columns: 0 minmax(0,1fr); } .side { display: none !important; } }
+  .side {
+    background: var(--pv-bg); border-right: 1px solid var(--pv-border);
+    padding: 12px 10px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .side .shead { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--pv-faint); padding: 4px 6px; }
+  .sitem {
+    display: flex; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 9px;
+    color: var(--pv-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sitem.active { background: var(--pv-layer-2); color: var(--pv-text); border: 1px solid var(--pv-border); }
+  .sitem .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pv-accent); flex: none; }
+  .chat { display: flex; flex-direction: column; min-width: 0; background: var(--pv-bg-deep); }
+  .chatbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 14px; border-bottom: 1px solid var(--pv-border); background: var(--pv-bg);
+    font-size: 12px; color: var(--pv-muted);
+  }
+  .chatbar b { color: var(--pv-text); font-weight: 600; }
+  .messages { padding: 14px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .msg { display: flex; }
+  .msg.user { justify-content: flex-end; }
+  .bubble {
+    max-width: 86%; padding: 9px 12px; line-height: 1.55; border-radius: var(--pv-radius);
+    background: var(--pv-layer-2); border: 1px solid var(--pv-border); white-space: pre-wrap;
+  }
+  .msg.user .bubble {
+    background: var(--pv-user-bg);
+    border-color: var(--pv-user-border);
+    color: var(--pv-user-text);
+  }
+  .botname { font-size: 10px; color: var(--pv-muted); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+  .botname .spark { width: 8px; height: 8px; border-radius: 50%; background: var(--pv-accent); box-shadow: 0 0 12px var(--pv-accent); }
+  .assistant { max-width: 94%; }
+  .assistant .bubble { background: transparent; border: 0; padding: 0; max-width: 100%; color: var(--pv-text); }
+  .tool {
+    margin-top: 8px; border: 1px solid var(--pv-border); background: var(--pv-layer-1);
+    border-radius: calc(var(--pv-radius) * .7); padding: 8px 10px; font-size: 11px; color: var(--pv-muted);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .tool .tag { color: var(--pv-accent); font-weight: 700; }
+  pre.code {
+    margin: 8px 0 0; padding: 10px; border-radius: calc(var(--pv-radius) * .7);
+    background: var(--pv-code); border: 1px solid var(--pv-border);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; line-height: 1.55;
+    overflow: auto; color: var(--pv-text);
+  }
+  pre.code .k { color: var(--pv-accent); }
+  pre.code .s { color: #7dd3a8; }
+  pre.code .c { color: var(--pv-faint); }
+  .rtl { direction: rtl; unicode-bidi: plaintext; text-align: start; font-family: Inter, "Noto Sans Arabic", "Noto Naskh Arabic", sans-serif; }
+  .composer { margin: 0 12px 12px; border: 1px solid var(--pv-border); border-radius: var(--pv-radius); background: var(--pv-bg); padding: 8px; display: flex; gap: 8px; align-items: flex-end; }
+  .composer .fakeinput { flex: 1; min-height: 30px; color: var(--pv-muted); font-size: 11px; padding: 6px 4px; display: flex; align-items: center; }
+  .composer .send { width: 30px; height: 30px; border-radius: 9px; border: 0; background: var(--pv-accent); color: #06070d; font-weight: 800; display: grid; place-items: center; flex: none; font-size: 13px; }
+  .controls {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 22px;
+    padding: 18px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .group { border: 1px solid var(--border); border-radius: 14px; padding: 12px; background: #0c0f18; }
+  .group h2 { margin: 0 0 10px; font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: var(--muted); }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; margin: 9px 0; }
+  .row label { font-size: 12.5px; color: #c9cfe3; }
+  .row .val { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  input[type="color"] { width: 44px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: transparent; cursor: pointer; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  input[type="text"], select {
+    width: 100%; font: inherit; font-size: 12.5px; color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; outline: none;
+  }
+  input[type="text"]:focus, select:focus { border-color: var(--accent); }
+  .seg { display: flex; gap: 6px; }
+  .seg button { flex: 1; padding: 7px; font-size: 12px; border-radius: 8px; }
+  .seg button.on { background: var(--accent); color: #06070d; border-color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #c9cfe3; }
+  .check input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .range-row { margin: 9px 0; }
+  .range-row .top { display: flex; justify-content: space-between; font-size: 12.5px; color: #c9cfe3; margin-bottom: 4px; }
+  .output { padding: 6px clamp(16px, 4vw, 44px) 44px; }
+  .output .card { border: 1px solid var(--border); border-radius: 18px; background: var(--panel); padding: 14px; }
+  .output .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .output h2 { margin: 0; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  textarea#css {
+    width: 100%; min-height: 230px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; line-height: 1.6; color: #d7e0ff; background: #0a0c13; border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px; outline: none;
+  }
+  .hint { color: var(--muted); font-size: 12.5px; line-height: 1.6; margin: 0; }
+  code { background: #0a0c13; border: 1px solid var(--border); padding: 1px 5px; border-radius: 6px; font-size: 11.5px; }
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px);
+    background: #10131d; border: 1px solid var(--border); color: var(--text);
+    padding: 10px 16px; border-radius: 12px; font-size: 13px; opacity: 0; pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease; z-index: 50;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo">OC</div>
+    <div>
+      <h1>OpenCode Skin Studio</h1>
+      <small>Design the graphics. Keep the full opencode engine.</small>
+    </div>
+  </div>
+  <div class="actions-top">
+    <button id="themeToggle" type="button">Preview: Dark</button>
+    <button id="reset" type="button">Reset</button>
+    <button id="export" class="primary" type="button">Generate skin.css</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="stage">
+    <div class="device">
+      <div class="app" id="preview">
+        <aside class="side">
+          <div class="shead">Sessions</div>
+          <div class="sitem active"><span class="dot"></span><span>build termux ui</span></div>
+          <div class="sitem"><span class="dot" style="background:var(--pv-faint)"></span><span>fix rtl persian</span></div>
+          <div class="sitem"><span class="dot" style="background:var(--pv-faint)"></span><span>deploy backend</span></div>
+          <div class="sitem"><span class="dot" style="background:var(--pv-faint)"></span><span>review diffs</span></div>
+        </aside>
+        <section class="chat">
+          <div class="chatbar"><b>build termux ui</b><span>opencode 1.19</span></div>
+          <div class="messages">
+            <div class="msg user"><div class="bubble">Make the UI feel modern and fast.</div></div>
+            <div class="msg bot">
+              <div class="assistant">
+                <div class="botname"><span class="spark"></span>opencode</div>
+                <div class="bubble">I updated the theme tokens and rebuilt the layout. Everything still runs on your own local server.</div>
+                <div class="tool"><span class="tag">edit</span><span>skin/skin.css</span><span style="margin-left:auto">+42 −8</span></div>
+                <pre class="code"><span class="c">/* tokens */</span>
+<span class="k">--v2-background-bg-accent</span>: <span class="s">#818cf8</span>;
+<span class="k">--radius-lg</span>: <span class="s">14px</span>;</pre>
+              </div>
+            </div>
+            <div class="msg user"><div class="bubble rtl">سلام! این رابط کاربری حالا فارسی را درست نشان می‌دهد.</div></div>
+          </div>
+          <div class="composer">
+            <div class="fakeinput rtl">پیام خود را بنویسید…</div>
+            <div class="send">↑</div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <aside class="controls">
+    <div class="group">
+      <h2>Palette</h2>
+      <div class="row"><label for="accent">Accent</label><input type="color" id="accent" value="#6366f1"></div>
+      <div class="row"><label for="bgLight">Light background</label><input type="color" id="bgLight" value="#eef1f8"></div>
+      <div class="row"><label for="bgDark">Dark background</label><input type="color" id="bgDark" value="#0b0d14"></div>
+    </div>
+    <div class="group">
+      <h2>Shape</h2>
+      <div class="range-row">
+        <div class="top"><label for="radius">Corner radius</label><span class="val" id="radiusVal">14px</span></div>
+        <input type="range" id="radius" min="0" max="26" value="14">
+      </div>
+      <div class="range-row">
+        <div class="top"><label for="size">Font size</label><span class="val" id="sizeVal">14px</span></div>
+        <input type="range" id="size" min="12" max="18" value="14">
+      </div>
+      <div class="row"><label for="font">Font family</label>
+        <select id="font">
+          <option value="Inter">Inter</option>
+          <option value="system-ui">System UI</option>
+          <option value="Noto Sans Arabic">Noto Sans Arabic</option>
+          <option value="Vazirmatn">Vazirmatn (if installed)</option>
+          <option value="Georgia">Georgia</option>
+        </select>
+      </div>
+    </div>
+    <div class="group">
+      <h2>Messages</h2>
+      <div class="row"><label>User bubble</label>
+        <div class="seg" id="bubbleSeg">
+          <button type="button" data-bubble="soft" class="on">Soft</button>
+          <button type="button" data-bubble="solid">Solid</button>
+          <button type="button" data-bubble="outline">Outline</button>
+        </div>
+      </div>
+    </div>
+    <div class="group">
+      <h2>Effects</h2>
+      <label class="check"><input type="checkbox" id="glass"> Frosted glass panels</label>
+      <div class="range-row">
+        <div class="top"><label for="blur">Blur</label><span class="val" id="blurVal">16px</span></div>
+        <input type="range" id="blur" min="0" max="30" value="16">
+      </div>
+      <div class="row"><label for="wall">Wallpaper URL</label></div>
+      <input type="text" id="wall" placeholder="https://…/photo.jpg (optional)">
+    </div>
+    <p class="hint">Export the CSS, commit it to <code>skin/skin.css</code>, then run <code>opencode-web-update</code>.</p>
+  </aside>
+</main>
+
+<section class="output">
+  <div class="card">
+    <div class="head">
+      <h2>Generated skin.css</h2>
+      <div class="actions-top">
+        <button id="copy" type="button">Copy</button>
+        <button id="download" type="button">Download</button>
+        <button id="openInstall" class="primary" type="button">Install command</button>
+      </div>
+    </div>
+    <textarea id="css" readonly spellcheck="false"></textarea>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  const defaults = {
+    accent: "#6366f1",
+    bgLight: "#eef1f8",
+    bgDark: "#0b0d14",
+    radius: 14,
+    size: 14,
+    font: "Inter",
+    bubble: "soft",
+    glass: false,
+    blur: 16,
+    wall: "",
+    preview: "dark"
+  };
+  let state = Object.assign({}, defaults);
+  const $ = (id) => document.getElementById(id);
+
+  function toRgb(hex) {
+    let h = hex.replace("#", "");
+    if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+    const n = parseInt(h, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function toHex(rgb) {
+    return "#" + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+  }
+  function mix(a, b, t) {
+    const A = toRgb(a), B = toRgb(b);
+    return toHex(A.map((v, i) => v + (B[i] - v) * t));
+  }
+  function palette(base, dark) {
+    const accent = dark ? mix(state.accent, "#ffffff", 0.18) : state.accent;
+    const text = dark ? mix(base, "#ffffff", 0.9) : mix(base, "#000000", 0.88);
+    const layer1 = mix(base, dark ? "#ffffff" : "#ffffff", dark ? 0.09 : 0.35);
+    const layer2 = mix(base, "#ffffff", dark ? 0.14 : 0.72);
+    const muted = mix(text, base, 0.42);
+    const faint = mix(text, base, 0.62);
+    const border = mix(text, base, dark ? 0.86 : 0.87);
+    const borderStrong = mix(text, base, dark ? 0.75 : 0.76);
+    const code = mix(base, dark ? "#000000" : "#000000", dark ? 0.28 : 0.06);
+    return { base, accent, text, layer1, layer2, muted, faint, border, borderStrong, code };
+  }
+
+  function apply() {
+    const dark = state.preview === "dark";
+    const p = palette(dark ? state.bgDark : state.bgLight, dark);
+    const root = $("preview").style;
+    root.setProperty("--pv-bg-deep", p.base);
+    root.setProperty("--pv-bg", p.layer1);
+    root.setProperty("--pv-layer-1", p.layer1);
+    root.setProperty("--pv-layer-2", p.layer2);
+    root.setProperty("--pv-text", p.text);
+    root.setProperty("--pv-muted", p.muted);
+    root.setProperty("--pv-faint", p.faint);
+    root.setProperty("--pv-border", p.border);
+    root.setProperty("--pv-accent", p.accent);
+    root.setProperty("--pv-code", p.code);
+    root.setProperty("--pv-radius", state.radius + "px");
+    root.setProperty("--pv-size", state.size + "px");
+    root.setProperty("--pv-font", '"' + state.font + '", Inter, "Noto Sans Arabic", "Noto Naskh Arabic", ui-sans-serif, system-ui, sans-serif');
+
+    const bubble = state.bubble;
+    if (bubble === "solid") {
+      root.setProperty("--pv-user-bg", p.accent);
+      root.setProperty("--pv-user-border", p.accent);
+      root.setProperty("--pv-user-text", dark ? "#080a10" : "#ffffff");
+    } else if (bubble === "outline") {
+      root.setProperty("--pv-user-bg", "transparent");
+      root.setProperty("--pv-user-border", p.accent);
+      root.setProperty("--pv-user-text", p.text);
+    } else {
+      root.setProperty("--pv-user-bg", mix(p.layer2, p.accent, dark ? 0.16 : 0.14));
+      root.setProperty("--pv-user-border", mix(p.border, p.accent, 0.4));
+      root.setProperty("--pv-user-text", p.text);
+    }
+    document.querySelectorAll("#bubbleSeg button").forEach((b) => b.classList.toggle("on", b.dataset.bubble === bubble));
+    $("themeToggle").textContent = "Preview: " + (dark ? "Dark" : "Light");
+    $("radiusVal").textContent = state.radius + "px";
+    $("sizeVal").textContent = state.size + "px";
+    $("blurVal").textContent = state.blur + "px";
+    $("css").value = buildCss();
+  }
+
+  function block(pal, scheme) {
+    const lines = [];
+    if (scheme === "light") lines.push(":root,");
+    lines.push('[data-color-scheme="' + scheme + '"] {');
+    lines.push("  --v2-background-bg-deep: " + pal.base + " !important;");
+    lines.push("  --v2-background-bg-base: " + pal.layer1 + " !important;");
+    lines.push("  --v2-background-bg-layer-01: " + pal.layer1 + " !important;");
+    lines.push("  --v2-background-bg-layer-02: " + pal.layer2 + " !important;");
+    lines.push("  --v2-background-bg-layer-03: " + pal.layer2 + " !important;");
+    lines.push("  --v2-background-bg-layer-04: " + pal.code + " !important;");
+    lines.push("  --v2-background-bg-accent: " + pal.accent + " !important;");
+    lines.push("  --v2-background-bg-contrast: " + pal.text + " !important;");
+    lines.push("  --v2-text-text-base: " + pal.text + " !important;");
+    lines.push("  --v2-text-text-muted: " + pal.muted + " !important;");
+    lines.push("  --v2-text-text-faint: " + pal.faint + " !important;");
+    lines.push("  --v2-text-text-accent: " + pal.accent + " !important;");
+    lines.push("  --v2-icon-icon-base: " + pal.text + " !important;");
+    lines.push("  --v2-icon-icon-muted: " + pal.muted + " !important;");
+    lines.push("  --v2-icon-icon-accent: " + pal.accent + " !important;");
+    lines.push("  --v2-border-border-base: " + pal.border + " !important;");
+    lines.push("  --v2-border-border-muted: " + pal.border + " !important;");
+    lines.push("  --v2-border-border-weak: " + pal.border + " !important;");
+    lines.push("  --v2-border-border-strong: " + pal.borderStrong + " !important;");
+    lines.push("  --v2-border-border-focus: " + pal.accent + " !important;");
+    lines.push("  --text-strong: " + pal.text + " !important;");
+    lines.push("  --text-base: " + pal.text + " !important;");
+    lines.push("  --text-weak: " + pal.muted + " !important;");
+    lines.push("  --background-base: " + pal.layer1 + " !important;");
+    lines.push("  --background-weak: " + pal.layer1 + " !important;");
+    lines.push("  --surface-base: " + pal.layer1 + " !important;");
+    lines.push("  --border-weak-base: " + pal.border + " !important;");
+    lines.push("  --border-strong-base: " + pal.borderStrong + " !important;");
+    lines.push("  --v2-font-family-sans: " + fontStack() + " !important;");
+    lines.push("  --font-family-sans: " + fontStack() + " !important;");
+    lines.push("  --font-size-base: " + state.size + "px !important;");
+    lines.push("  --radius-xs: " + Math.max(2, state.radius - 8) + "px !important;");
+    lines.push("  --radius-sm: " + Math.max(3, state.radius - 6) + "px !important;");
+    lines.push("  --radius-md: " + Math.max(4, state.radius - 4) + "px !important;");
+    lines.push("  --radius-lg: " + state.radius + "px !important;");
+    lines.push("  --radius-xl: " + (state.radius + 4) + "px !important;");
+    lines.push("}");
+    return lines.join("\n");
+  }
+
+  function fontStack() {
+    return '"' + state.font + '", "Inter", "Noto Sans Arabic", "Noto Naskh Arabic", ui-sans-serif, system-ui, sans-serif';
+  }
+
+  function buildCss() {
+    const light = palette(state.bgLight, false);
+    const dark = palette(state.bgDark, true);
+    const out = [];
+    out.push("/* OpenCode skin — generated by OpenCode Skin Studio */");
+    out.push("/* Full functionality comes from your local opencode server. */");
+    out.push("");
+    out.push(block(light, "light"));
+    out.push("");
+    out.push(block(dark, "dark"));
+    out.push("");
+    out.push("html body {");
+    out.push("  background-attachment: fixed !important;");
+    out.push("  background-size: cover !important;");
+    out.push("  background-position: center !important;");
+    if (state.wall.trim()) {
+      out.push("  background-image: linear-gradient(color-mix(in srgb, var(--v2-background-bg-deep) 55%, transparent), var(--v2-background-bg-deep)), url(\"" + state.wall.trim().replace(/"/g, "%22") + "\") !important;");
+    } else {
+      out.push("  background-image: radial-gradient(900px 520px at 12% -10%, color-mix(in srgb, " + state.accent + " 22%, transparent), transparent 70%), radial-gradient(760px 460px at 92% 6%, color-mix(in srgb, #22d3ee 13%, transparent), transparent 72%) !important;");
+    }
+    out.push("}");
+    out.push("");
+
+    if (state.bubble === "solid") {
+      out.push('[data-slot="user-message-text"] {');
+      out.push("  background: var(--v2-background-bg-accent) !important;");
+      out.push("  color: var(--v2-background-bg-deep) !important;");
+      out.push("  border-color: var(--v2-background-bg-accent) !important;");
+      out.push("}");
+    } else if (state.bubble === "outline") {
+      out.push('[data-slot="user-message-text"] {');
+      out.push("  background: transparent !important;");
+      out.push("  border: 1px solid var(--v2-text-text-accent) !important;");
+      out.push("}");
+    } else {
+      out.push('[data-slot="user-message-text"] {');
+      out.push("  background-image: linear-gradient(135deg, color-mix(in srgb, var(--v2-text-text-accent) 16%, var(--v2-background-bg-layer-02)), var(--v2-background-bg-layer-02) 75%) !important;");
+      out.push("  border: 1px solid color-mix(in srgb, var(--v2-text-text-accent) 28%, transparent) !important;");
+      out.push("  border-radius: " + Math.max(8, state.radius + 2) + "px !important;");
+      out.push("}");
+    }
+    out.push("");
+    out.push('[data-component="prompt-input-v2"],');
+    out.push('[data-component="dock-prompt"] {');
+    out.push("  border-radius: " + state.radius + "px !important;");
+    out.push("  border: 1px solid var(--v2-border-border-base) !important;");
+    out.push("}");
+    out.push("");
+    out.push('[data-component="markdown"] [data-component="markdown-code"] {');
+    out.push("  border-radius: " + Math.max(4, state.radius - 4) + "px !important;");
+    out.push("  border: 1px solid var(--v2-border-border-base) !important;");
+    out.push("}");
+
+    if (state.glass) {
+      out.push("");
+      out.push('[data-slot="user-message-text"],');
+      out.push('[data-component="prompt-input-v2"],');
+      out.push('[data-component="dock-prompt"] {');
+      out.push("  backdrop-filter: blur(" + state.blur + "px) saturate(140%) !important;");
+      out.push("  -webkit-backdrop-filter: blur(" + state.blur + "px) saturate(140%) !important;");
+      out.push("}");
+    }
+    out.push("");
+    return out.join("\n");
+  }
+
+  function setState(patch) {
+    state = Object.assign({}, state, patch);
+    apply();
+  }
+
+  function readControls() {
+    setState({
+      accent: $("accent").value,
+      bgLight: $("bgLight").value,
+      bgDark: $("bgDark").value,
+      radius: Number($("radius").value),
+      size: Number($("size").value),
+      font: $("font").value,
+      glass: $("glass").checked,
+      blur: Number($("blur").value),
+      wall: $("wall").value
+    });
+  }
+
+  ["accent", "bgLight", "bgDark", "radius", "size", "font", "glass", "blur", "wall"].forEach((id) => {
+    const el = $(id);
+    el.addEventListener("input", readControls);
+    el.addEventListener("change", readControls);
+  });
+
+  document.querySelectorAll("#bubbleSeg button").forEach((b) => {
+    b.addEventListener("click", () => setState({ bubble: b.dataset.bubble }));
+  });
+
+  $("themeToggle").addEventListener("click", () => setState({ preview: state.preview === "dark" ? "light" : "dark" }));
+  $("reset").addEventListener("click", () => {
+    state = Object.assign({}, defaults);
+    $("accent").value = defaults.accent;
+    $("bgLight").value = defaults.bgLight;
+    $("bgDark").value = defaults.bgDark;
+    $("radius").value = defaults.radius;
+    $("size").value = defaults.size;
+    $("font").value = defaults.font;
+    $("glass").checked = defaults.glass;
+    $("blur").value = defaults.blur;
+    $("wall").value = defaults.wall;
+    apply();
+    toast("Reset to defaults");
+  });
+  $("export").addEventListener("click", () => {
+    apply();
+    $("css").scrollIntoView({ behavior: "smooth", block: "center" });
+    toast("CSS generated");
+  });
+  $("copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("css").value);
+      toast("Copied skin.css");
+    } catch (e) {
+      $("css").select();
+      document.execCommand("copy");
+      toast("Copied skin.css");
+    }
+  });
+  $("download").addEventListener("click", () => {
+    const blob = new Blob([$("css").value], { type: "text/css" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "skin.css";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+  $("openInstall").addEventListener("click", async () => {
+    const cmd = 'curl -fsSL https://raw.githubusercontent.com/aishervin/SHENhero/main/termux-skin/install.sh | bash';
+    try {
+      await navigator.clipboard.writeText(cmd);
+      toast("Install command copied");
+    } catch (e) {
+      toast(cmd);
+    }
+  });
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+  }
+
+  apply();
+})();
+</script>
+</body>
+</html>

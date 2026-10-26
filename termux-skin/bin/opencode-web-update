@@ -1,0 +1,35 @@
+#!/data/data/com.termux/files/usr/bin/env bash
+set -euo pipefail
+
+REPO="${OC_SKIN_REPO:-aishervin/SHENhero}"
+BASE="${OC_SKIN_BASE:-termux-skin}"
+RAW="https://raw.githubusercontent.com/$REPO/main/$BASE"
+
+WEB_DIR="${HOME:+$HOME/.opencode-web}"
+WEB_DIR="${WEB_DIR:-$PREFIX/var/opencode-web}"
+SKIN_DIR="${OC_SKIN_DIR:-$WEB_DIR/skin}"
+
+mkdir -p "$WEB_DIR" "$SKIN_DIR" "$PREFIX/bin"
+
+say() { printf '  %s\n' "$*"; }
+
+say "Downloading skin from $REPO"
+curl -fsSL "$RAW/skin/skin.css" -o "$SKIN_DIR/skin.css.new"
+curl -fsSL "$RAW/skin/skin.js" -o "$SKIN_DIR/skin.js.new"
+curl -fsSL "$RAW/proxy/rtl-proxy.py" -o "$WEB_DIR/rtl-proxy.py.new"
+curl -fsSL "$RAW/bin/opencode-web-open" -o "$PREFIX/bin/opencode-web-open.new"
+curl -fsSL "$RAW/bin/opencode-web-stop" -o "$PREFIX/bin/opencode-web-stop.new"
+curl -fsSL "$RAW/bin/opencode-web-update" -o "$PREFIX/bin/opencode-web-update.new"
+
+[ -f "$SKIN_DIR/skin.css" ] && cp -f "$SKIN_DIR/skin.css" "$SKIN_DIR/skin.css.bak"
+
+mv -f "$SKIN_DIR/skin.css.new" "$SKIN_DIR/skin.css"
+mv -f "$SKIN_DIR/skin.js.new" "$SKIN_DIR/skin.js"
+mv -f "$WEB_DIR/rtl-proxy.py.new" "$WEB_DIR/rtl-proxy.py"
+mv -f "$PREFIX/bin/opencode-web-open.new" "$PREFIX/bin/opencode-web-open"
+mv -f "$PREFIX/bin/opencode-web-stop.new" "$PREFIX/bin/opencode-web-stop"
+mv -f "$PREFIX/bin/opencode-web-update.new" "$PREFIX/bin/opencode-web-update"
+
+chmod +x "$PREFIX/bin/opencode-web-open" "$PREFIX/bin/opencode-web-stop" "$PREFIX/bin/opencode-web-update" "$WEB_DIR/rtl-proxy.py"
+
+say "Updated. Restart with: opencode-web-stop && opencode-web-open"
